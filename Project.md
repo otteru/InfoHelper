@@ -29,6 +29,22 @@ rows.append({
 
 ## 목표
 
-### 1차 mvp
+### 1차 완성물
+
 - supabase에 vector db 구축
 - RAG를 통해서 내가 질문한 것을 찾아오게 하기
+
+## 2차 완성물
+
+- LangChain, LangGraph으로 update
+- Crawling을 Crawl4Ai 도입
+  - 처음에는 AI를 통해 CSS/XPath schema를 만들게 하고 그걸 기반으로 Crawl4AI를 통해서 CSS/XPath schema로 뽑게 하기.
+
+- langgraph nodes 흐름 :
+  1) main.py에 url이 들어옴
+  2) fetch 날려서 목록들 있는 html 들고오기
+  3) LLM으로 해당 html 기반 CSS/XPath 스키마 제작
+  4) crawl4ai로 테스트 및 안될 때 피드백 루프 제작 (max:3)
+  5) 목록들 중 1개만 가져와서 상세 글 html 들고오기
+  6) LLM으로 해당 html 기반 CSS/XPath 스키마 제작
+  7) crawl4ai로 테스트 및 안될 때 피드백 루프 제작 (max:3)

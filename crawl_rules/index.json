@@ -1,0 +1,9 @@
+{
+  "rules": [
+    {
+      "name": "example",
+      "url_pattern": "https://www.example.ac.kr/web/kor/-390",
+      "rule_file": "rules/example.json"
+    }
+  ]
+}
