@@ -126,7 +126,7 @@ def main() -> None:
     load_dotenv()
     
     # embedding model     
-    gemini_client = genai.Client(api_key = os.environ["gemini-api-key"])
+    gemini_client = genai.Client(api_key = os.environ["GOOGLE_API_KEY"])
     
     
     # supabase - vector DB

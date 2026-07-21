@@ -59,7 +59,7 @@ def ask_gemini(prompt: str, gemini_client: genai.Client) :
     
 def main() -> None:
     load_dotenv()
-    gemini_client = genai.Client(api_key=os.environ["gemini-api-key"])
+    gemini_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
 
     question = input("질문: ")
 
