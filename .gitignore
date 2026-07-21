@@ -1,3 +1,9 @@
 # .file
 .env
 .vscode
+
+# cache
+__pycache__
+
+# crawl test output
+test/mvp2/test.md

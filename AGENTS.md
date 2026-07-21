@@ -1,5 +1,14 @@
 # AGENTS.md
 
+## 프로젝트 정보
+
+사용자는 이 프로젝트를 통해 더 나은 개발자로 성장하고자 한다.
+이 프로젝트에서 사용자는 **applied ai engineer** 와 **backend engineer** 그리고 **devops architecture**로서 성장하는데 목적이 있다.
+
+그에 따라 대규모 시스템 설계와 AI 하네스, vectorDB 및 devops, fastapi를 이 프로젝트를 통해 공부하고 서비스 배포를 하려고 한다.
+
+그리고 언젠가는 langgraph를 벗어나 plain python으로 하네스를 구축하는 것을 고려하고 있다.
+
 ## 사용자 작업 스타일
 
 - 사용자는 AI가 처음부터 끝까지 한 번에 전부 구현하는 방식보다, 작업을 잘게 나누어 단계별로 진행하는 방식을 선호한다.
