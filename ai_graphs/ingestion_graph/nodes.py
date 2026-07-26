@@ -93,64 +93,6 @@ async def crawl_source_page(state: IngestionState) -> dict[str, tuple[NoticeTarg
     
     return {"notice_targets": notice_targets}
 
-def _find_existing_notice_ids(
-    supabase: Client,
-    notice_targets: tuple[NoticeTarget, ...],
-) -> frozenset[str]:
-    """Supabase에 이미 저장된 공지 URL 조회 및 반환"""
-    urls = [target.url for target in notice_targets]
-    
-    # frozenset = 불변 set
-    if not urls:
-        return frozenset()
-    
-    response = (
-        supabase.table("notice_chunks")
-        .select("notice_id")
-        .in_("notice_id", urls) # WHERE notice_id IN (urls)
-        .execute()
-    )
-    
-    return frozenset(
-        notice_id
-        
-        for row in response.data or []
-        if isinstance(row, dict)
-        and isinstance(
-            notice_id := row.get("notice_id"),
-            str
-        )
-    )
-    
-
-
-def filter_existing_notices(
-    state: IngestionState,
-    runtime: Runtime[IngestionContext]
-) -> dict[str, tuple[NoticeTarget, ...]]:
-    """이미 저장된 공지는 제외"""
-    
-    notice_targets = state.get("notice_targets")
-    
-    if notice_targets is None:
-        raise ValueError("notice_targets가 없습니다")
-    
-    supabase_client = runtime.context.supabase_client
-    
-    existing_notice_ids = _find_existing_notice_ids(
-        supabase=supabase_client,
-        notice_targets=notice_targets
-    )
-    
-    new_notice_targets = tuple(
-        target
-        for target in notice_targets
-        if target.url not in existing_notice_ids
-    )
-    
-    return {"notice_targets": new_notice_targets}
-
-
 def _create_notice(
     target: NoticeTarget,
     result: Any,
@@ -242,21 +184,30 @@ def _create_embedding(client: genai.Client, title: str, text: str) -> list[float
 def _save_chunk(
     supabase: Client ,
     notice: Notice,
+    chunk_index: int,
     chunk: str,
     embedding: list[float],
 ) -> None:
     
-    supabase.table
-    supabase.table("notice_chunks").insert({
+    supabase.table("notice_chunks").upsert({
         "notice_id": notice.url,
+        "chunk_index": chunk_index,
         "title": notice.title,
         "url": notice.url,
         "content": chunk,
-        "deadline": None,
+        "deadline": (
+            notice.deadline.isoformat()
+            if notice.deadline is not None
+            else None
+        ),
         "source_id": notice.source_id,
         "status": "open",
         "embedding": embedding,
-    }).execute()
+        },
+        # notice_id와 chunk_index 조합이 이미 존재하면
+        # 새 행을 insert하지 말고 기존 행을 update해라.
+        on_conflict="notice_id,chunk_index",                                     
+    ).execute()
     
 def upsert_to_vectorDB(
     state: IngestionState,
@@ -276,11 +227,9 @@ def upsert_to_vectorDB(
     for notice in notices:
         chunks = _split_text(notice.content, chunk_size=1000)
         
-        for chunk in chunks:
+        for chunk_index, chunk in enumerate(chunks):
             embedding = _create_embedding(gemini_client, notice.title, chunk)
-            _save_chunk(supabase, notice, chunk, embedding)
+            _save_chunk(supabase, notice, chunk_index, chunk, embedding)
             saved_count += 1
             
     return {"saved_count": saved_count}
-            
-    
