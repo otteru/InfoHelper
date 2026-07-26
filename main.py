@@ -24,8 +24,18 @@ async def run_ingestion() -> None:
     )
     
     saved_count = result.get("saved_count", 0)
+    errors = result.get("errors", ())
+
     print(f"저장 완료 chunk 수: {saved_count}")
 
+    if not errors:
+        print("크롤링 오류 없음")
+        return
+
+    print(f"크롤링 실패 수: {len(errors)}")
+
+    for error in errors:
+        print(f"- {error}")
 
 async def main() -> None:
     """프로젝트 실행 환경을 초기화한다."""
