@@ -1,19 +1,20 @@
 from ai_graphs.ingestion_graph.state import IngestionState
 from ai_graphs.ingestion_graph.models import Notice, NoticeTarget, Source
+from ai_graphs.ingestion_graph.context import IngestionContext
 import json
-import os
 import asyncio
 from typing import Any
 from dotenv import load_dotenv
 from pathlib import Path
+from langgraph.runtime import Runtime
 
 from google import genai
 from google.genai import types
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
-from supabase import create_client, Client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-USER_URL_PATH = PROJECT_ROOT / "userURL.json"
+USER_URL_PATH = PROJECT_ROOT / "data" / "userURL.json"
 
 
 
@@ -111,7 +112,7 @@ def _find_existing_notice_ids(
     )
     
     return frozenset(
-        str(row["notice_id"])
+        notice_id
         
         for row in response.data or []
         if isinstance(row, dict)
@@ -121,19 +122,11 @@ def _find_existing_notice_ids(
         )
     )
     
-#TODO 매번 client 생성이 아니라 한 곳에서 호출하여 싱글톤으로 사용되게 해야 함
-def create_supabase_client() -> Client:
-    """supabase client 생성"""
-    supabase_url = f"https://{os.environ["supabase_project_id"]}.supabase.co"
-    supabase_secret_key = os.environ["supabase_secret_key"]
-    supabase_client = create_client(supabase_url, supabase_secret_key)
-    
-    return supabase_client
-    
 
 
 def filter_existing_notices(
     state: IngestionState,
+    runtime: Runtime[IngestionContext]
 ) -> dict[str, tuple[NoticeTarget, ...]]:
     """이미 저장된 공지는 제외"""
     
@@ -142,8 +135,10 @@ def filter_existing_notices(
     if notice_targets is None:
         raise ValueError("notice_targets가 없습니다")
     
+    supabase_client = runtime.context.supabase_client
+    
     existing_notice_ids = _find_existing_notice_ids(
-        supabase=create_supabase_client(),
+        supabase=supabase_client,
         notice_targets=notice_targets
     )
     
@@ -263,15 +258,18 @@ def _save_chunk(
         "embedding": embedding,
     }).execute()
     
-def upsert_to_vectorDB(state: IngestionState) -> dict[str, int]:
+def upsert_to_vectorDB(
+    state: IngestionState,
+    runtime: Runtime[IngestionContext]
+) -> dict[str, int]:
     """공지 본문을 chunk로 나누고 임베딩 생성 후 Supabase에 upsert"""
     notices = state.get("notices")
     
     if notices is None:
         raise ValueError("notices가 없습니다")
     
-    gemini_client = genai.Client(api_key = os.environ["gemini-api-key"])
-    supabase = create_supabase_client()
+    gemini_client = runtime.context.gemini_client
+    supabase = runtime.context.supabase_client
     
     saved_count = 0
     

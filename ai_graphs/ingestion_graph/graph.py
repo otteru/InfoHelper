@@ -9,11 +9,20 @@ from ai_graphs.ingestion_graph.nodes import (
     upsert_to_vectorDB,
 )
 from ai_graphs.ingestion_graph.state import IngestionState
+from ai_graphs.ingestion_graph.context import IngestionContext
 
 
-def create_ingestion_graph() -> CompiledStateGraph:
+def create_ingestion_graph() -> CompiledStateGraph[
+    IngestionState,
+    IngestionContext,
+    IngestionState,
+    IngestionState,
+]: # 이렇게 하지 않으면 main에서 ainvoke할 때 context를 None으로 추론해서 pylance 에러 발생
     """공지 크롤링·임베딩·저장 워크플로우를 생성한다."""
-    builder = StateGraph(IngestionState)
+    builder = StateGraph(
+        IngestionState,
+        context_schema=IngestionContext,    
+    )
 
     builder.add_node("load_sources", load_sources)
     builder.add_node("crawl_source_page", crawl_source_page)

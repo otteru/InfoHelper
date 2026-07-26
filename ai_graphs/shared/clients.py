@@ -1,0 +1,25 @@
+import os
+
+from google import genai
+from supabase import Client, create_client
+
+def create_gemini_client() -> genai.Client:
+    """Gemini 클라이언트를 생성"""
+    google_api_key = os.environ.get("GOOGLE_API_KEY")
+    
+    if not google_api_key:
+        raise RuntimeError("GOOGLE_API_KEY가 설정되지 않았습니다.")
+    
+    return genai.Client(api_key=google_api_key)
+
+def create_supabase_client() -> Client:
+    """supabase 클라이언트를 생성한다."""
+    project_id = os.environ.get("supabase_project_id")
+    supabase_secret_key = os.environ.get("supabase_secret_key")
+    
+    if not project_id or not supabase_secret_key:
+        raise RuntimeError("Supabase 환경 변수가 설정되지 않았습니다.")
+    
+    supabase_url = f"https://{project_id}.supabase.co"
+    
+    return create_client(supabase_url, supabase_secret_key)
