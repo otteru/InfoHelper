@@ -8,7 +8,7 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-USER_URL_PATH = PROJECT_ROOT / "userURL.json"
+USER_URL_PATH = PROJECT_ROOT / "data" / "userURL.json"
 
 
 @dataclass(frozen=True)

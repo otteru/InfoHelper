@@ -1,38 +1,37 @@
-from ai_graphs.ingestion_graph.state import IngestionState
-from ai_graphs.ingestion_graph.models import Notice, NoticeTarget, Source
-from ai_graphs.ingestion_graph.context import IngestionContext
 import json
-import asyncio
-from typing import Any
-from dotenv import load_dotenv
+from collections.abc import AsyncIterator
 from pathlib import Path
-from langgraph.runtime import Runtime
+from typing import Any
 
+from langgraph.runtime import Runtime
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 from google import genai
 from google.genai import types
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 from supabase import Client
+
+from ai_graphs.ingestion_graph.context import IngestionContext
+from ai_graphs.ingestion_graph.models import (
+    CrawlFailure,
+    Notice,
+    NoticeTarget,
+    Source,
+)
+from ai_graphs.ingestion_graph.state import IngestionState
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 USER_URL_PATH = PROJECT_ROOT / "data" / "userURL.json"
 
 
-
-# ================================================================
 # Ingestion Graph workflow
-# 1. userURL.json에서 공지 출처와 목록 URL을 불러온다.
+# 1. data/userURL.json에서 공지 출처와 목록 URL을 불러온다.
 #    - 이후에는 sources 테이블로 이전한다. 
 # 2. Crawl4AI로 각 공지 목록 페이지를 가져온다.
 # 3. 목록 페이지에서 상세 공지 URL을 추출한다.
-# 4. Supabase에 이미 저장된 공지는 제외한다.
-# 5. 새 공지의 상세 페이지를 Crawl4AI로 가져온다.
-# 6. 제목, 본문, URL, 작성일, 마감일을 정제해 Notice로 구조화한다.
-# 7. 공지 본문을 임베딩 가능한 chunk로 나눈다.
-# 8. 각 chunk의 임베딩을 생성한다.
-# 9. 임베딩과 공지 메타데이터를 Supabase에 upsert한다.
-# ================================================================
-
-load_dotenv()
+# 4. Crawl4AI로 상세 공지 페이지를 가져온다.
+# 5. 제목, 본문, URL을 Notice로 구조화한다.
+# 6. 공지 본문을 임베딩 가능한 청크로 나눈다.
+# 7. 각 청크의 임베딩을 생성한다.
+# 8. (notice_id, chunk_index)를 기준으로 Supabase에 upsert한다.
 
 def load_sources(state: IngestionState) -> dict[str, tuple[Source,...]]:
     """userURL.json에서 공지 출처 목록을 불러온다."""
@@ -49,49 +48,80 @@ def load_sources(state: IngestionState) -> dict[str, tuple[Source,...]]:
         
         return {"sources": sources}
     
-async def _crawl_throgh_crawl4ai(url: str):
-    """craw4ai를 이용해서 크롤링 결과 반환하는 도구 함수"""
-    browser_config = BrowserConfig(headless=True, verbose=True)
-    crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
+async def _crawl_throgh_crawl4ai(
+    urls: list[str],
+) -> list[Any | CrawlFailure]:
+    """하나의 Crawl4AI 크롤러로 여러 URL을 크롤링한다."""
+    if not urls:
+        return []
 
-    async with AsyncWebCrawler(config=browser_config) as crawler:
-        result = await crawler.arun(url=url, config=crawler_config)
+    browser_config = BrowserConfig(headless=True, verbose=True)
+    crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
+
+    try:
+        async with AsyncWebCrawler(config=browser_config) as crawler:
+            results = await crawler.arun_many(
+                urls=urls,
+                config=crawler_config,
+            )
+    except Exception as error:
+        message = f"{type(error).__name__}: {error}"
+
+        return [
+            CrawlFailure(url=url, message=message)
+            for url in urls
+        ]
         
-        if not result.success:
-            raise RuntimeError(f"크롤링 실패: {result.error_message}")
-        
-        return result 
+    # stream으로 올 경우 비동기적으로 꺼내서 최종적으로 리스트로 만드는 문법
+    # stream = False의 경우에는 이 조건문 통과
+    if isinstance(results, AsyncIterator):
+        return [result async for result in results]
+
+    return list(results)
     
-async def crawl_source_page(state: IngestionState) -> dict[str, tuple[NoticeTarget, ...]]:
-    """공지 페이지에서 공지 url들 추출"""
+async def crawl_source_page(state: IngestionState) -> IngestionState:
+    """공지 목록 페이지에서 상세 공지 URL을 추출한다."""
     sources = state.get("sources")
-    
+
     if sources is None:
-        raise ValueError("sources가 없습니다. load_sources 노드를 먼저 실행하세요")
-    
-    # 여러 비동기 작업을 동시에 실행하고, 전부 끝날 때까지 기다리는 함수
-    # *는 튜플이나 리스트 안의 값을 함수 인자로 하나씩 펼치는 연산자
-    results = await asyncio.gather(
-        *(
-            _crawl_throgh_crawl4ai(source.url)
-            for source in sources
-        )
+        raise ValueError("sources가 없습니다.")
+
+    # Crawl4AI가 URL 목록을 동시 크롤링하고 결과를 반환한다.
+    results = await _crawl_throgh_crawl4ai(
+        [source.url for source in sources],
     )
-    
-    # zip()은 여러 묶음에서 같은 순서의 값을 하나씩 짝지어 줍니다. 
-    # strict=True는 두 묶음의 길이가 다르면 오류를 내는 옵션
-    notice_targets = tuple(
-        NoticeTarget(
-            source_id=source.name,
-            url=link["href"],
-        )
-        for source, result in zip(sources, results, strict = True)
-        for link in result.links.get("internal", [])
-        #TODO artclView.do는 건국대 공지사항에 맞춘 하드 코딩 추후 확장할 때 수정해야 함
-        if "artclView.do" in link["href"]
-    )
-    
-    return {"notice_targets": notice_targets}
+
+    notice_targets: tuple[NoticeTarget, ...] = ()
+    errors = state.get("errors", ())
+
+    for source, result in zip(sources, results, strict=True):
+        if isinstance(result, CrawlFailure):
+            errors = (*errors, f"{result.url}: {result.message}")
+            continue
+
+        if not result.success:
+            error_message = result.error_message or "알 수 없는 크롤링 오류"
+            errors = (*errors, f"{source.url}: {error_message}")
+            continue
+
+        links = result.links.get("internal", [])
+
+        for link in links:
+            href = link.get("href")
+
+            if isinstance(href, str) and "artclView.do" in href:
+                notice_targets = (
+                    *notice_targets,
+                    NoticeTarget(
+                        source_id=source.name,
+                        url=href,
+                    ),
+                )
+
+    return {
+        "notice_targets": notice_targets,
+        "errors": errors,
+    }
 
 def _create_notice(
     target: NoticeTarget,
@@ -129,31 +159,42 @@ def _create_notice(
         deadline=None,
     )
 
-async def crawl_notice_pages(state: IngestionState) -> dict[str, tuple[Notice, ...]]:
-    """각각의 공지글을 크롤링"""
+async def crawl_notice_pages(state: IngestionState) -> IngestionState:
+    """상세 공지를 크롤링하고 성공한 공지만 반환한다."""
     notice_targets = state.get("notice_targets")
-    
+
     if notice_targets is None:
-        raise ValueError("notice_targets가 없습니다")
-    
-    
-    results = await asyncio.gather(
-        *(
-            _crawl_throgh_crawl4ai(target.url)
-            for target in notice_targets
-        )
+        raise ValueError("notice_targets가 없습니다.")
+
+    results = await _crawl_throgh_crawl4ai(
+        [target.url for target in notice_targets],
     )
 
-    notices = tuple(
-        _create_notice(target, result)
-        for target, result in zip(
-            notice_targets,
-            results,
-            strict=True
-        )
-    )
-    
-    return {"notices": tuple(notices)}
+    notices: tuple[Notice, ...] = ()
+    errors = state.get("errors", ())
+
+    for target, result in zip(notice_targets, results, strict=True):
+        if isinstance(result, CrawlFailure):
+            errors = (*errors, f"{result.url}: {result.message}")
+            continue
+
+        if not result.success:
+            error_message = result.error_message or "알 수 없는 크롤링 오류"
+            errors = (*errors, f"{target.url}: {error_message}")
+            continue
+
+        try:
+            notice = _create_notice(target, result)
+        except ValueError as error:
+            errors = (*errors, f"{target.url}: {error}")
+            continue
+
+        notices = (*notices, notice)
+
+    return {
+        "notices": notices,
+        "errors": errors,
+    }
 
 def _split_text(text:str, chunk_size: int = 1000) -> list[str] :
     
@@ -209,6 +250,20 @@ def _save_chunk(
         on_conflict="notice_id,chunk_index",                                     
     ).execute()
     
+def _delete_stale_chunks(
+    supabase: Client,
+    notice_id: str,
+    chunk_count: int,
+) -> None:
+    """ 새 청크 개수보다 큰 기존 청크를 삭제한다."""
+    # eq = equal
+    # gte = greater than or equal
+    supabase.table("notice_chunks").delete().eq(
+        "notice_id", notice_id,
+    ).gte(
+        "chunk_index", chunk_count,
+    ).execute()
+
 def upsert_to_vectorDB(
     state: IngestionState,
     runtime: Runtime[IngestionContext]
@@ -226,10 +281,16 @@ def upsert_to_vectorDB(
     
     for notice in notices:
         chunks = _split_text(notice.content, chunk_size=1000)
-        
+
         for chunk_index, chunk in enumerate(chunks):
             embedding = _create_embedding(gemini_client, notice.title, chunk)
             _save_chunk(supabase, notice, chunk_index, chunk, embedding)
             saved_count += 1
-            
+
+        _delete_stale_chunks(
+            supabase,
+            notice_id=notice.url,
+            chunk_count=len(chunks),
+        )
+
     return {"saved_count": saved_count}

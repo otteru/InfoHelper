@@ -11,6 +11,15 @@ class Source:
     url: str
 
 
+@dataclass(frozen=True)
+class CrawlFailure:
+    """크롤링 결과를 만들지 못한 URL의 실패 정보.
+    일부 성공이 아니라 arun_many 자체가 예외를 던질 때의 경우이다."""
+
+    url: str
+    message: str
+
+
 # 목록 페이지에서 발견했지만 아직 상세 내용을 가져오지 않은 공지
 @dataclass(frozen=True)
 class NoticeTarget:
