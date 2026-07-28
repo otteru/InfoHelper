@@ -2,16 +2,16 @@ import asyncio
 
 from dotenv import load_dotenv
 
-from ai_graphs.ingestion_graph.context import IngestionContext
 from ai_graphs.ingestion_graph.graph import create_ingestion_graph
 from ai_graphs.shared.clients import (
     create_gemini_client,
     create_supabase_client,
 )
+from ai_graphs.shared.context import GraphContext
 
 async def run_ingestion() -> None:
     """Ingestion Graph 실행 및 저장 결과 출력"""
-    context = IngestionContext(
+    context = GraphContext(
         gemini_client=create_gemini_client(),
         supabase_client=create_supabase_client(),
     )

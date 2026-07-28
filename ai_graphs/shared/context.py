@@ -5,8 +5,8 @@ from supabase import Client
 
 
 @dataclass(frozen=True)
-class IngestionContext:
-    """Ingestion Graph 실행에 필요한 외부 서비스 의존성."""
+class GraphContext:
+    """AI Graph 실행에 공통으로 필요한 외부 서비스 의존성."""
 
     gemini_client: genai.Client
     supabase_client: Client

@@ -9,7 +9,6 @@ from google import genai
 from google.genai import types
 from supabase import Client
 
-from ai_graphs.ingestion_graph.context import IngestionContext
 from ai_graphs.ingestion_graph.models import (
     CrawlFailure,
     Notice,
@@ -17,6 +16,7 @@ from ai_graphs.ingestion_graph.models import (
     Source,
 )
 from ai_graphs.ingestion_graph.state import IngestionState
+from ai_graphs.shared.context import GraphContext
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 USER_URL_PATH = PROJECT_ROOT / "data" / "userURL.json"
@@ -266,7 +266,7 @@ def _delete_stale_chunks(
 
 def upsert_to_vectorDB(
     state: IngestionState,
-    runtime: Runtime[IngestionContext]
+    runtime: Runtime[GraphContext]
 ) -> dict[str, int]:
     """공지 본문을 chunk로 나누고 임베딩 생성 후 Supabase에 upsert"""
     notices = state.get("notices")
