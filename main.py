@@ -3,6 +3,7 @@ import asyncio
 from dotenv import load_dotenv
 
 from ai_graphs.ingestion_graph.graph import create_ingestion_graph
+from ai_graphs.recommendation_graph.graph import create_recommendation_graph
 from ai_graphs.shared.clients import (
     create_gemini_client,
     create_supabase_client,
@@ -37,10 +38,36 @@ async def run_ingestion() -> None:
     for error in errors:
         print(f"- {error}")
 
+
+async def run_recommendation() -> None:
+    """Recommendation Graph를 실행하고 추천 후보를 출력한다."""
+    context = GraphContext(
+        gemini_client=create_gemini_client(),
+        supabase_client=create_supabase_client(),
+    )
+
+    graph = create_recommendation_graph()
+
+    result = await graph.ainvoke(
+        {},
+        context=context,
+    )
+
+    candidates = result.get("candidates", ())
+    print(f"추천 후보 수: {len(candidates)}")
+
+    for index, candidate in enumerate(candidates, start=1):
+        print(
+            f"- {index}. {candidate.get('title')} "
+            f"/ score={candidate.get('total_score')}"
+        )
+
+
 async def main() -> None:
     """프로젝트 실행 환경을 초기화한다."""
     load_dotenv()
     await run_ingestion()
+    await run_recommendation()
 
 
 if __name__ == "__main__":
