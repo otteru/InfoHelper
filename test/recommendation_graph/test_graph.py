@@ -124,12 +124,14 @@ def test_recommendation_graph가_검색_결과를_공지별_후보로_통합한�
     )
     assert len(result["retrieved_chunks"]) == 4
     assert len(result["candidates"]) == 1
+    assert len(result["recommendations"]) == 1
 
     candidate = result["candidates"][0]
     assert candidate["notice_id"] == "notice-a"
     assert candidate["best_similarity"] == pytest.approx(0.9)
     assert candidate["query_coverage"] == pytest.approx(1.0)
     assert candidate["total_score"] == pytest.approx(0.92)
+    assert result["recommendations"][0] == candidate
 
 
 def test_rpc_검색_결과의_필수_필드가_없으면_실패한다() -> None:
@@ -159,3 +161,24 @@ def test_검색된_청크가_없으면_빈_후보를_반환한다() -> None:
     )
 
     assert result["candidates"] == ()
+
+
+def test_추천_점수_threshold_이상인_후보만_선정한다() -> None:
+    """경계값을 포함해 기준 점수 이상인 후보만 recommendation으로 만든다."""
+    result = nodes.select_recommendations(
+        {
+            "candidates": (
+                {"notice_id": "high", "total_score": 0.71},
+                {"notice_id": "boundary", "total_score": 0.7},
+                {"notice_id": "low", "total_score": 0.69},
+            ),
+        }
+    )
+
+    assert tuple(
+        recommendation["notice_id"]
+        for recommendation in result["recommendations"]
+    ) == (
+        "high",
+        "boundary",
+    )

@@ -5,6 +5,7 @@ from ai_graphs.recommendation_graph.nodes import (
     load_user_info,
     merge_candidates,
     queries_search,
+    select_recommendations,
 )
 from ai_graphs.recommendation_graph.state import RecommendationState
 from ai_graphs.shared.context import GraphContext
@@ -25,10 +26,12 @@ def create_recommendation_graph() -> CompiledStateGraph[
     builder.add_node("load_user_info", load_user_info)
     builder.add_node("queries_search", queries_search)
     builder.add_node("merge_candidates", merge_candidates)
+    builder.add_node("select_recommendations", select_recommendations)
 
     builder.add_edge(START, "load_user_info")
     builder.add_edge("load_user_info", "queries_search")
     builder.add_edge("queries_search", "merge_candidates")
-    builder.add_edge("merge_candidates", END)
+    builder.add_edge("merge_candidates", "select_recommendations")
+    builder.add_edge("select_recommendations", END)
 
     return builder.compile()

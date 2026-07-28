@@ -14,15 +14,14 @@ from ai_graphs.shared.context import GraphContext
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 USER_INFO_PATH = PROJECT_ROOT / "data" / "userInfo.md"
 SIMILARITY_THRESHOLD = 0.65
+RECOMMENDATION_SCORE_THRESHOLD = 0.7
 
 # Recommendation Graph workflow
 # 1. data/userInfo.md에서 사용자 프로필과 추천 검색어를 불러온다.
 # 2. 목적별 추천 검색어를 각각 임베딩한다.
 # 3. 검색어 임베딩으로 Supabase의 공지 청크를 검색한다.
 # 4. 같은 공지에서 검색된 여러 청크를 notice_id 기준으로 통합한다.
-# 5. 관심 키워드 일치도를 계산해 후보 점수를 보정한다.
-# 6. 마감일, 공지 상태, 지원 자격을 기준으로 지원할 수 없는 후보를 제거한다.
-# 7. 벡터 유사도와 키워드·메타데이터 점수를 조합해 후보 순위를 계산한다.
+# 5. 후보 점수가 추천 기준 이상이면 최종 recommendation으로 선정한다.
 
 def load_user_info(state: RecommendationState) -> RecommendationState:
     """userInfo.md에서 User 정보와 query를 가져온다."""
@@ -274,4 +273,30 @@ def merge_candidates(
 
     return {
         "candidates": sorted_candidates
+    }
+
+
+def select_recommendations(
+    state: RecommendationState,
+) -> RecommendationState:
+    """추천 기준 점수 이상인 후보를 최종 recommendation으로 선정한다."""
+    candidates = state.get("candidates", ())
+
+    if any(
+        not isinstance(candidate.get("total_score"), (int, float))
+        for candidate in candidates
+    ):
+        raise ValueError("후보에 올바른 total_score가 없습니다.")
+
+    recommendations = tuple(
+        candidate
+        for candidate in candidates
+        if cast(
+            int | float,
+            candidate["total_score"],
+        ) >= RECOMMENDATION_SCORE_THRESHOLD
+    )
+
+    return {
+        "recommendations": recommendations,
     }
