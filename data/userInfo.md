@@ -1,4 +1,12 @@
-```md
+---
+recommendation_queries:
+  career: AI Harness Engineer와 AI Applied Engineer 커리어에 도움이 되는 LLM, RAG, AI Agent, LLM Evaluation, Orchestration 관련 인턴, 공모전, 대외활동 공지
+  school: 건국대학교 컴퓨터공학부 2학년 학생이 지원 가능한 학교 프로그램, 학과 공지, 장학금, 현장실습 공지
+  project: 방학 동안 배포 가능한 AI 웹앱, RAG 서비스, LLM Agent 프로젝트, 개발 공모전, 해커톤 모집 공지
+  global: 해외 취업, 글로벌 AI 프로그램, 싱가포르 또는 글로벌 테크 커리어에 도움이 되는 프로그램 공지
+  deadline: 신청 마감이 임박한 AI, 소프트웨어, 인턴, 공모전, 장학금, 프로그램 모집 공지
+---
+
 # User Profile: 김유담 / Yudam Kim
 
 ## Basic Information
