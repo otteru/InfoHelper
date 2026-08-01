@@ -1,0 +1,11 @@
+.git
+.env
+.aws
+.vscode
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+.DS_Store
+docs
+test
