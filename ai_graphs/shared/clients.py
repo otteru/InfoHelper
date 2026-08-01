@@ -14,8 +14,8 @@ def create_gemini_client() -> genai.Client:
 
 def create_supabase_client() -> Client:
     """supabase 클라이언트를 생성한다."""
-    project_id = os.environ.get("supabase_project_id")
-    supabase_secret_key = os.environ.get("supabase_secret_key")
+    project_id = os.environ.get("SUPABASE_PROJECT_ID")
+    supabase_secret_key = os.environ.get("SUPABASE_SECRET_KEY")
     
     if not project_id or not supabase_secret_key:
         raise RuntimeError("Supabase 환경 변수가 설정되지 않았습니다.")
