@@ -168,9 +168,9 @@ def test_추천_점수_threshold_이상인_후보만_선정한다() -> None:
     result = nodes.select_recommendations(
         {
             "candidates": (
-                {"notice_id": "high", "total_score": 0.71},
-                {"notice_id": "boundary", "total_score": 0.7},
-                {"notice_id": "low", "total_score": 0.69},
+                {"notice_id": "high", "total_score": 0.61},
+                {"notice_id": "boundary", "total_score": 0.6},
+                {"notice_id": "low", "total_score": 0.59},
             ),
         }
     )

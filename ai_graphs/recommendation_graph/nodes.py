@@ -14,7 +14,7 @@ from ai_graphs.shared.context import GraphContext
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 USER_INFO_PATH = PROJECT_ROOT / "data" / "userInfo.md"
 SIMILARITY_THRESHOLD = 0.65
-RECOMMENDATION_SCORE_THRESHOLD = 0.7
+RECOMMENDATION_SCORE_THRESHOLD = 0.6
 
 # Recommendation Graph workflow
 # 1. data/userInfo.md에서 사용자 프로필과 추천 검색어를 불러온다.
