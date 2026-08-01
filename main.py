@@ -1,6 +1,12 @@
 import asyncio
+import os
+from typing import TYPE_CHECKING, cast
 
+import boto3
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from mypy_boto3_sesv2.client import SESV2Client
 
 from ai_graphs.ingestion_graph.graph import create_ingestion_graph
 from ai_graphs.recommendation_graph.graph import create_recommendation_graph
@@ -9,13 +15,11 @@ from ai_graphs.shared.clients import (
     create_supabase_client,
 )
 from ai_graphs.shared.context import GraphContext
+from delivery.sender import SesEmailSender
+from delivery.service import DeliveryService
 
-async def run_ingestion() -> None:
+async def run_ingestion(context: GraphContext) -> None:
     """Ingestion Graph 실행 및 저장 결과 출력"""
-    context = GraphContext(
-        gemini_client=create_gemini_client(),
-        supabase_client=create_supabase_client(),
-    )
     
     graph = create_ingestion_graph()
     
@@ -39,12 +43,10 @@ async def run_ingestion() -> None:
         print(f"- {error}")
 
 
-async def run_recommendation() -> None:
+async def run_recommendation(
+    context: GraphContext,
+) -> tuple[dict[str, object], ...]:
     """Recommendation Graph를 실행하고 추천 후보를 출력한다."""
-    context = GraphContext(
-        gemini_client=create_gemini_client(),
-        supabase_client=create_supabase_client(),
-    )
 
     graph = create_recommendation_graph()
 
@@ -62,13 +64,46 @@ async def run_recommendation() -> None:
             f"/ score={candidate.get('total_score')}"
         )
 
+    recommendations = result.get("recommendations", ())
+    print(f"최종 추천 수: {len(recommendations)}")
+    return recommendations
+
+
+def send_email(recommendations: tuple[dict[str, object], ...]) -> None:
+    """추천 결과를 이메일로 전송한다."""
+
+    # sender.py에서 타입체크 때문에 한번 cast
+    ses_client = cast(
+        "SESV2Client",
+        boto3.client(
+            "sesv2",
+            region_name=os.environ.get("AWS_REGION", "us-east-1"),
+        ),
+    )
+
+    sender = SesEmailSender(
+        ses_client=ses_client,
+        sender_email=os.environ["SES_SENDER_EMAIL"],
+    )
+
+    delivery_service = DeliveryService(email_sender=sender)
+
+    delivery_service.send_recommendation_email(
+        recipient=os.environ["RECIPIENT_EMAIL"],
+        recommendations=recommendations,
+    )
+
 
 async def main() -> None:
-    """프로젝트 실행 환경을 초기화한다."""
     load_dotenv()
-    await run_ingestion()
-    await run_recommendation()
 
+    context = GraphContext(
+        gemini_client=create_gemini_client(),
+        supabase_client=create_supabase_client(),
+    )
+    await run_ingestion(context)
+    recommendations = await run_recommendation(context)
+    send_email(recommendations)
 
 if __name__ == "__main__":
     asyncio.run(main())
