@@ -59,34 +59,46 @@
 - [x] DB 관련 저장소 정리
   - 중복 SQL 초안 삭제
   - `.DS_Store` 삭제와 `.gitignore` 등록
+- [x] 중복 발송 방지 실제 통합 검증
+  - 최신 Docker 이미지로 실제 흐름을 2회 실행 완료
+  - 1회차 SES 발송과 이력 저장, 2회차 동일 공지 발송 제외 검증 완료
+- [x] Pulumi 프로젝트 골격과 초기 AWS 리소스 배포
+  - `infra/`에 Python 3.12 기반 Pulumi 프로젝트와 Pulumi Cloud `dev` Stack 생성
+  - `pulumi 3.x`, `pulumi-aws 7.x` 의존성과 `us-east-1` Provider 리전 설정
+  - Private ECR `info-helper-dev` 생성
+    - 이미지 태그 `IMMUTABLE`, AES-256 암호화, `force_delete=False`
+  - 기존 SES v2 Email Identity를 `dev` State에 Import
+    - Pulumi 논리 이름 `sender_identity`, `protect=True`
+    - 발신 이메일은 `sesSenderEmail` Secret config로 관리
+  - VPC `10.0.0.0/16` 생성과 DNS support·hostname 활성화
+  - Internet Gateway 생성 후 VPC에 연결
+  - Pulumi Update #4 성공, 기존 ECR·SES 변경 없이 VPC·Internet Gateway 생성 확인
 
 ## 진행 중인 작업
 
-- [ ] 중복 발송 방지 실제 통합 검증
-  - 진행 상황: 테이블·RPC·권한·코드·단위 테스트와 원격 migration 적용 완료
-  - 다음 단계: 최신 Docker 이미지로 실제 흐름을 2회 실행
-  - 완료 기준: 1회차 SES 발송 성공 및 이력 저장, 2회차 동일 공지 발송 생략
 - [ ] 추천 점수 품질 조정
   - 진행 상황: 최고 점수가 약 `0.60`이어서 연결 검증용으로 기준을 `0.6`까지 낮춤
   - 다음 단계: 실제 추천 내용을 검토하고 기준 유지 또는 점수식 개선 결정
 - [ ] Pulumi AWS 배포
-  - 진행 상황: 아키텍처와 Docker 실행 환경은 결정, `infra/` 프로젝트는 아직 없음
-  - 다음 단계: 중복 발송 방지 통합 검증 후 Pulumi Python 프로젝트 생성
+  - 진행 상황: ECR, SES Identity Import, VPC, Internet Gateway 배포 완료
+  - 현재 Pulumi Output: `ecr_repository_url`, `ses_identity_arn`, `vpc_id`
+  - 다음 단계: Public Subnet과 Route Table을 정의하고 `0.0.0.0/0 → Internet Gateway` 경로 연결
+  - SES 전략: Pulumi는 AWS를 자동 탐색해 get-or-create하지 않으므로, `us-east-1`에 이미 인증된 Identity는 최초 1회 `pulumi import`로 `dev` State에 연결
+  - Import 후에는 일반 `aws.sesv2.EmailIdentity` 선언과 `protect=True`로 관리
+  - 새로운 Stack·AWS 계정에 Identity가 없으면 동일한 선언이 새 Identity를 생성하며 이메일 인증이 별도로 필요
+  - 이후 ECS Task Role에 `ses:SendEmail` 최소 권한을 부여하고 Access Key는 컨테이너에 저장하지 않음
 
 ## 다음에 해야 할 작업
 
-1. 최신 변경을 포함하도록 `info-helper:local` Docker 이미지를 다시 빌드한다.
-2. `aws sso login --profile infohelper` 후 Docker 전체 흐름을 실행한다.
-   - `.env`는 `--env-file`로 전달
-   - `~/.aws`는 로컬 검증에서만 `/root/.aws:ro`로 마운트
-   - Apple Silicon에서 `--platform linux/amd64` 유지
-3. Supabase `recommendation_deliveries`에 발송 성공 행이 생성됐는지 확인한다.
-4. 동일한 입력으로 한 번 더 실행해 동일 공지가 이메일에서 제외되는지 확인한다.
-5. 통합 검증이 성공하면 `infra/`에 Pulumi Python 프로젝트를 만든다.
-6. VPC, Public Subnet, Internet Gateway, Route Table, Security Group, ECR, ECS Cluster, CloudWatch Log Group을 정의한다.
-7. Task Execution Role, Task Role, Scheduler Role, ECS Task Definition을 정의한다.
-8. `GOOGLE_API_KEY`, `SUPABASE_SECRET_KEY`를 SSM Parameter Store `SecureString`으로 연결한다.
-9. Fargate Task 수동 실행 성공 후 `Asia/Seoul` 기준 하루 1회 Scheduler를 활성화한다.
+1. Public Subnet 수와 가용영역을 결정하고 Subnet을 정의한다.
+2. Public Route Table, `0.0.0.0/0 → Internet Gateway` Route, Subnet Association을 정의한다.
+3. 인바운드가 없는 ECS Task Security Group과 필요한 아웃바운드 정책을 정의한다.
+4. ECS Cluster와 CloudWatch Log Group을 정의한다.
+5. Task Execution Role, Task Role, Scheduler Role, ECS Task Definition을 정의한다.
+6. `GOOGLE_API_KEY`, `SUPABASE_SECRET_KEY`를 SSM Parameter Store `SecureString`으로 연결한다.
+7. ECR 이미지 Push와 Fargate Task 수동 실행을 검증한다.
+8. GitHub Actions에서 PR Preview와 `main` 배포를 구성하고 AWS 인증은 OIDC를 사용한다.
+9. 수동 실행 성공 후 `Asia/Seoul` 기준 하루 1회 Scheduler를 활성화한다.
 
 ## 주의사항
 
@@ -95,6 +107,13 @@
 - 로컬 AWS 인증은 `AWS_PROFILE=infohelper`를 사용하고 Access Key를 `.env`에 저장하지 않음
 - ECS에서는 SSO나 Access Key가 아니라 IAM Task Role을 사용해야 함
 - 현재 SSO Permission Set은 `AdministratorAccess`이므로 인프라 구축 후 최소 권한으로 축소해야 함
+- 로컬 Pulumi 명령은 `infohelper` Conda 환경과 `AWS_PROFILE=infohelper`를 사용함
+- ECR은 `IMMUTABLE`이므로 GitHub Actions에서 `latest` 같은 태그를 재사용하지 않고 Commit SHA 등 고유 태그를 사용해야 함
+- ECR은 `force_delete=False`이므로 이미지가 있으면 Repository 삭제가 실패하는 것이 정상임
+- SES Identity의 Pulumi 논리 이름은 Import된 State와 동일한 `sender_identity`를 유지해야 함
+- SES Identity는 `protect=True`이므로 삭제나 교체가 필요한 경우 보호를 명시적으로 해제해야 함
+- `sesSenderEmail`이 Secret config라 이를 사용해 만든 SES ARN Output도 Secret으로 전파됨
+- 로컬 Pulumi CLI는 `v3.208.0`으로 동작했으며 SDK는 `3.x` 범위이므로 추후 CLI 업데이트 권장
 - `data/userInfo.md`가 Docker 이미지에 포함되므로 ECR은 Private으로 유지하고 개인정보 취급에 주의
 - 최신 중복 발송 방지 코드는 기존 `info-helper:local` 이미지에 포함되지 않았을 수 있으므로 반드시 재빌드해야 함
 - `recommendation_deliveries`는 RLS가 활성화되어 있으며 backend는 `SUPABASE_SECRET_KEY`를 사용함
@@ -125,6 +144,10 @@
 - `ai_graphs/shared/context.py` - Gemini·Supabase 공통 클라이언트 Context
 - `Dockerfile` - Python 3.12, Crawl4AI·Chromium, 프로젝트 실행 이미지
 - `pyproject.toml` - Python 버전과 의존성·패키지 설정
+- `infra/Pulumi.yaml` - Pulumi 프로젝트와 Python Runtime 설정
+- `infra/Pulumi.dev.yaml` - `dev` Stack 리전·ECR·SES Secret·VPC CIDR 설정
+- `infra/pyproject.toml` - Pulumi Python SDK와 AWS Provider 의존성
+- `infra/__main__.py` - ECR, SES Identity, VPC, Internet Gateway 정의와 Stack Output
 - `supabase/config.toml` - Supabase 로컬 개발·migration 설정
 - `supabase/migrations/20260805034940_remote_schema.sql` - 기존 원격 DB 구조 baseline
 - `supabase/migrations/20260805041354_restrict_backend_permissions.sql` - backend 전용 권한 제한
@@ -136,8 +159,8 @@
 ## 마지막 상태
 
 - 브랜치: `feat/deployment-setup`
-- 마지막 커밋: `00b6a6e chore: Supabase 마이그레이션 관리`
-- 마지막 커밋 포함 파일: `.gitignore`, `.DS_Store` 삭제, Supabase 설정과 migration 5개
+- 마지막 작업 커밋: Pulumi AWS 기본 인프라 구성과 배포 인계 갱신
+- 원격 상태: `origin/feat/deployment-setup`보다 3커밋 앞섬, push하지 않음
 - 테스트 상태: `23 passed, 1 warning`
 - 테스트 명령:
   - `conda run -n infohelper python -m pytest -q test/delivery test/recommendation_graph/test_graph.py test/ingestion_graph/test_nodes.py`
@@ -145,6 +168,7 @@
 - `pip wheel --no-deps --no-build-isolation .` 빌드 통과
 - Docker 이미지: `info-helper:local`, `linux/amd64`; 최신 커밋 포함 위해 재빌드 필요
 - Supabase migration 상태: 5개 모두 원격 적용, `LOCAL = REMOTE`
-- 현재 미커밋 변경: `docs/HANDOFF.md`
-- 원격 상태: `origin/feat/deployment-setup`과 `HEAD`가 `00b6a6e`로 동일함
-- DB migration 커밋은 원격 브랜치에도 push된 상태
+- Pulumi 상태: `dev` Stack Update #4 성공, ECR·SES Identity·VPC·Internet Gateway 관리 중
+- 현재 미커밋 변경 없음
+- `*.egg-info/`, `__pycache__/`는 빌드·실행 산출물이므로 `.gitignore`에서 제외
+- 이번 세션에서는 애플리케이션 테스트를 다시 실행하지 않았고, Pulumi Preview·Up만 검증함
