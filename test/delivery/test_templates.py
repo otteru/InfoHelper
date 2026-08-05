@@ -14,14 +14,14 @@ def _recommendation(index: int) -> dict[str, object]:
     }
 
 
-def test_html_digest는_상위_5개_추천만_표시한다() -> None:
+def test_html_digest는_모든_추천을_표시한다() -> None:
     recommendations = tuple(_recommendation(index) for index in range(1, 7))
 
     result = render_html_digest(recommendations)
 
     assert "AI 프로그램 1" in result
     assert "AI 프로그램 5" in result
-    assert "AI 프로그램 6" not in result
+    assert "AI 프로그램 6" in result
     assert "적합도 90%" in result
     assert "https://example.com/notices/1" in result
 

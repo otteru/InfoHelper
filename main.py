@@ -15,19 +15,24 @@ from ai_graphs.shared.clients import (
     create_supabase_client,
 )
 from ai_graphs.shared.context import GraphContext
+from delivery.history import (
+    DeliveryHistory,
+    SupabaseDeliveryHistory,
+)
 from delivery.sender import SesEmailSender
 from delivery.service import DeliveryService
 
+
 async def run_ingestion(context: GraphContext) -> None:
     """Ingestion Graph 실행 및 저장 결과 출력"""
-    
+
     graph = create_ingestion_graph()
-    
+
     result = await graph.ainvoke(
         {},
         context=context,
     )
-    
+
     saved_count = result.get("saved_count", 0)
     errors = result.get("errors", ())
 
@@ -69,7 +74,10 @@ async def run_recommendation(
     return recommendations
 
 
-def send_email(recommendations: tuple[dict[str, object], ...]) -> None:
+def send_email(
+    recommendations: tuple[dict[str, object], ...],
+    delivery_history: DeliveryHistory,
+) -> None:
     """추천 결과를 이메일로 전송한다."""
 
     # sender.py에서 타입체크 때문에 한번 cast
@@ -86,11 +94,15 @@ def send_email(recommendations: tuple[dict[str, object], ...]) -> None:
         sender_email=os.environ["SES_SENDER_EMAIL"],
     )
 
-    delivery_service = DeliveryService(email_sender=sender)
+    delivery_service = DeliveryService(
+        email_sender=sender,
+        delivery_history=delivery_history,
+    )
 
-    delivery_service.send_recommendation_email(
-        recipient=os.environ["RECIPIENT_EMAIL"],
-        recommendations=recommendations,
+    delivery_service.send_recommendation_emails(
+        {
+            os.environ["RECIPIENT_EMAIL"]: recommendations,
+        }
     )
 
 
@@ -101,9 +113,18 @@ async def main() -> None:
         gemini_client=create_gemini_client(),
         supabase_client=create_supabase_client(),
     )
+
+    delivery_history = SupabaseDeliveryHistory(
+        client=context.supabase_client,
+    )
+
     await run_ingestion(context)
     recommendations = await run_recommendation(context)
-    send_email(recommendations)
+    send_email(
+        recommendations=recommendations,
+        delivery_history=delivery_history,
+    )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

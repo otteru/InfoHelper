@@ -4,7 +4,6 @@ from typing import TypeAlias
 
 
 Recommendation: TypeAlias = Mapping[str, object]
-MAX_DIGEST_ITEMS = 5
 
 
 def _get_text(
@@ -145,8 +144,8 @@ def _render_html_item(
 def render_html_digest(
     recommendations: tuple[Recommendation, ...],
 ) -> str:
-    """상위 추천 공지를 HTML 이메일 본문으로 만든다."""
-    selected = recommendations[:MAX_DIGEST_ITEMS]
+    """추천 공지를 HTML 이메일 본문으로 만든다."""
+    selected = recommendations
     items = "".join(
         _render_html_item(recommendation, index)
         for index, recommendation in enumerate(selected, start=1)
@@ -271,8 +270,8 @@ def render_html_digest(
 def render_text_digest(
     recommendations: tuple[Recommendation, ...],
 ) -> str:
-    """상위 추천 공지를 일반 텍스트 이메일 본문으로 만든다."""
-    selected = recommendations[:MAX_DIGEST_ITEMS]
+    """추천 공지를 일반 텍스트 이메일 본문으로 만든다."""
+    selected = recommendations
 
     if not selected:
         return (
