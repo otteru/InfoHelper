@@ -3,7 +3,7 @@ from collections.abc import Mapping
 import pulumi
 import pulumi_aws as aws
 
-from ecs import create_ecs_resources
+from ecs import create_ecs_resources, create_task_definition
 from iam import create_ecs_iam_resources
 from network import create_network_resources
 from ssm_parameters import create_secret_parameters
@@ -21,6 +21,12 @@ common_tags: Mapping[str, str] = {
 }
 google_api_key: pulumi.Output[str] = config.require_secret("googleApiKey")
 supabase_secret_key: pulumi.Output[str] = config.require_secret("supabaseSecretKey")
+image_tag: str = config.require("imageTag")
+recipient_email: pulumi.Output[str] = config.require_secret("recipientEmail")
+
+aws_config = pulumi.Config("aws")
+aws_region: str = aws_config.require("region")
+supabase_project_id: str = config.require("supabaseProjectId")
 
 # ECR
 repository = aws.ecr.Repository(
@@ -71,6 +77,27 @@ ecs_iam = create_ecs_iam_resources(
     common_tags=common_tags,
 )
 
+# task
+task_definition = create_task_definition(
+    stack=stack,
+    repository_url=repository.repository_url,
+    image_tag=image_tag,
+    task_execution_role_arn=ecs_iam.task_execution_role.arn,
+    task_role_arn=ecs_iam.task_role.arn,
+    log_group_name=ecs.log_group.name,
+    aws_region=aws_region,
+    supabase_project_id=supabase_project_id,
+    sender_email=sender_email,
+    recipient_email=recipient_email,
+    google_api_key_parameter_arn=(
+        secret_parameters.google_api_key_parameter.arn
+    ),
+    supabase_secret_key_parameter_arn=(
+        secret_parameters.supabase_secret_key_parameter.arn
+    ),
+    common_tags=common_tags,
+)
+
 pulumi.export("ecr_repository_url", repository.repository_url)
 pulumi.export("ses_identity_arn", sender_identity.arn)
 pulumi.export("vpc_id", network.vpc.id)
@@ -89,3 +116,4 @@ pulumi.export(
     ecs_iam.task_execution_role.arn,
 )
 pulumi.export("ecs_task_role_arn", ecs_iam.task_role.arn)
+pulumi.export("ecs_task_definition_arn", task_definition.arn)
