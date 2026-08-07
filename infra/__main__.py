@@ -6,6 +6,7 @@ import pulumi_aws as aws
 from ecs import create_ecs_resources
 from iam import create_ecs_iam_resources
 from network import create_network_resources
+from ssm_parameters import create_secret_parameters
 
 
 config = pulumi.Config()
@@ -18,6 +19,8 @@ common_tags: Mapping[str, str] = {
     "Environment": stack,
     "ManagedBy": "Pulumi",
 }
+google_api_key: pulumi.Output[str] = config.require_secret("googleApiKey")
+supabase_secret_key: pulumi.Output[str] = config.require_secret("supabaseSecretKey")
 
 # ECR
 repository = aws.ecr.Repository(
@@ -41,15 +44,30 @@ sender_identity = aws.sesv2.EmailIdentity(
     opts=pulumi.ResourceOptions(protect=True),
 )
 
+# 이렇게 create.. 함수를 계속 호출을 해도 리소스 타입 + Pulumi 논리 이름 + Parent로 식별하기에
+# 이게 같으면 변경이 없다. (물론 속성이 변경된 경우는 Update를 진행)
 network = create_network_resources(
     stack=stack,
     vpc_cidr=vpc_cidr,
     common_tags=common_tags,
 )
+
 ecs = create_ecs_resources(stack=stack, common_tags=common_tags)
+
+secret_parameters = create_secret_parameters(
+    stack=stack,
+    google_api_key=google_api_key,
+    supabase_secret_key=supabase_secret_key,
+    common_tags=common_tags,
+)
+
 ecs_iam = create_ecs_iam_resources(
     stack=stack,
     sender_identity_arn=sender_identity.arn,
+    ssm_parameter_arns=(
+        secret_parameters.google_api_key_parameter.arn,
+        secret_parameters.supabase_secret_key_parameter.arn,
+    ),
     common_tags=common_tags,
 )
 

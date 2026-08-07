@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pulumi
@@ -15,6 +15,7 @@ def create_ecs_iam_resources(
     *,
     stack: str,
     sender_identity_arn: pulumi.Input[str],
+    ssm_parameter_arns: Sequence[pulumi.Input[str]],
     common_tags: Mapping[str, str],
 ) -> EcsIamResources:
     # ECS IAM Roles
@@ -79,11 +80,31 @@ def create_ecs_iam_resources(
         }
     )
 
+    # ECS가 Task 시작 전에 SSM Parameter를 읽을 수 있도록 허용
+    ssm_read_policy_json: pulumi.Output[str] = pulumi.Output.json_dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["ssm:GetParameters"],
+                    "Resource": list(ssm_parameter_arns),
+                }
+            ],
+        }
+    )
+
     # custom 생성한 정책 적용 - aws가 제공하는 권한이 아니기에 attachment가 아님
     ecs_task_ses_inline_policy = aws.iam.RolePolicy(
         "ecs-task-ses-policy",
         role=ecs_task_role.id,
         policy=ses_send_policy_json,
+    )
+
+    ecs_execution_ssm_inline_policy = aws.iam.RolePolicy(
+        "ecs-execution-ssm-policy",
+        role=ecs_task_execution_role.id,
+        policy=ssm_read_policy_json,
     )
 
     return EcsIamResources(
