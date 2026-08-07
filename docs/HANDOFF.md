@@ -2,173 +2,128 @@
 
 ## 완료된 작업
 
-- [x] Ingestion Graph MVP 구현
-  - Crawl4AI 배치 크롤링과 URL별 실패 격리
-  - 본문 1,000자 청크 분할
-  - Gemini `gemini-embedding-2` 1,536차원 임베딩 생성
-  - Supabase `(notice_id, chunk_index)` upsert와 오래된 tail 청크 삭제
-- [x] Recommendation Graph MVP 구현
-  - `data/userInfo.md`의 YAML query와 Markdown 프로필 분리
-  - query별 임베딩과 `match_notice_chunks` RPC 검색
-  - 유사도 `0.65` 미만 청크 제외
-  - 최고 유사도 80% + query coverage 20%로 점수 계산
-  - 현재 최종 추천 기준은 `total_score >= 0.6`
-- [x] Graph 공통 의존성 주입 구조 적용
-  - `GraphContext`로 Gemini·Supabase 클라이언트 공유
-- [x] 추천 이메일 Delivery 계층과 일일 실행 흐름 구현
-  - `Ingestion → Recommendation → Delivery → SES`
-  - HTML·Plain Text Digest와 SES v2 Sender 구현
-  - 추천 0건이면 발송 생략, SES 오류는 호출자에게 전파
-  - 추천 개수 제한을 제거해 미발송 추천을 모두 Digest에 포함
-- [x] 로컬·Docker 전체 실행과 실제 SES 이메일 수신 검증
-  - Docker에서 저장 청크 29개, 크롤링 오류 0개, 추천 후보 15개, 최종 추천 1개 확인
-  - 첫 Docker SES 실행은 만료된 SSO 토큰으로 실패했고, `aws sso login --profile infohelper` 후 재실행 성공
-- [x] AWS CLI SSO와 SES 로컬 발송 구성
-  - AWS 프로필: `infohelper`
-  - 리전: `us-east-1`
-  - 현재 Permission Set: `AdministratorAccess`
-- [x] 최소 AWS 배포 구조 결정
-  - `EventBridge Scheduler → ECS Fargate Scheduled Task → main.py → SES`
-  - Public Subnet + Public IP, 인바운드 차단, NAT Gateway 제외
-- [x] Python·Docker 실행 환경 구성
-  - `pyproject.toml`에 Python 3.12와 런타임·개발 의존성 정의
-  - `Dockerfile`, `.dockerignore` 작성
-  - `linux/amd64` 이미지 `info-helper:local` 빌드 성공
-- [x] 추천 이메일 중복 발송 방지 코드 구현
-  - Supabase `recommendation_deliveries` 테이블 생성 확인
-  - 유니크 기준: `(recipient_email, notice_id, channel)`
-  - 다수의 `(recipient_email, notice_id, channel)` 후보를 `find_delivered_pairs` RPC로 일괄 조회
-  - 이미 발송된 사용자·공지 쌍을 제외하고 SES 발송
-  - SES 성공 후에만 `recommendation_deliveries` upsert
-  - SES 실패 시 발송 이력을 저장하지 않음
-  - 커밋: `70cc53f feat: 추천 이메일 중복 발송 방지`
-- [x] 중복 발송 방지 단위 검증
-  - 이미 발송한 공지 제외
-  - 미발송 공지 발송 후 이력 저장
-  - SES 실패 시 이력 미저장
-  - RPC 응답 형식 검증
-  - 안전 테스트 `23 passed, 1 warning`, Python 컴파일·wheel 빌드 통과
-- [x] Supabase DB 스키마 migration 관리 적용
-  - Supabase CLI 초기화와 원격 프로젝트 연결
-  - 기존 원격 스키마를 `remote_schema` baseline migration으로 저장
-  - `notice_chunks`, `recommendation_deliveries` 테이블과 `match_notice_chunks`, `find_delivered_pairs` RPC를 저장소에서 관리
-  - `anon`, `authenticated`, `PUBLIC`의 테이블·Sequence·RPC 권한을 제거하고 `service_role`만 허용
-  - `notice_id`, `title`, `url`에 `NOT NULL` 제약 적용
-  - 1,536차원 cosine 검색용 HNSW 인덱스 적용
-  - migration 5개 모두 원격 DB 적용 및 `LOCAL = REMOTE` 확인
-- [x] DB 관련 저장소 정리
-  - 중복 SQL 초안 삭제
-  - `.DS_Store` 삭제와 `.gitignore` 등록
-- [x] 중복 발송 방지 실제 통합 검증
-  - 최신 Docker 이미지로 실제 흐름을 2회 실행 완료
-  - 1회차 SES 발송과 이력 저장, 2회차 동일 공지 발송 제외 검증 완료
-- [x] Pulumi 프로젝트 골격과 초기 AWS 리소스 배포
-  - `infra/`에 Python 3.12 기반 Pulumi 프로젝트와 Pulumi Cloud `dev` Stack 생성
-  - `pulumi 3.x`, `pulumi-aws 7.x` 의존성과 `us-east-1` Provider 리전 설정
-  - Private ECR `info-helper-dev` 생성
-    - 이미지 태그 `IMMUTABLE`, AES-256 암호화, `force_delete=False`
-  - 기존 SES v2 Email Identity를 `dev` State에 Import
-    - Pulumi 논리 이름 `sender_identity`, `protect=True`
-    - 발신 이메일은 `sesSenderEmail` Secret config로 관리
-  - VPC `10.0.0.0/16` 생성과 DNS support·hostname 활성화
-  - Internet Gateway 생성 후 VPC에 연결
-  - Pulumi Update #4 성공, 기존 ECR·SES 변경 없이 VPC·Internet Gateway 생성 확인
+- [x] 애플리케이션 MVP 구현 및 Docker 실행 검증
+  - Ingestion → Recommendation → Delivery → SES 흐름 구현
+  - Supabase 기반 공지 청크 저장·검색과 이메일 중복 발송 방지 적용
+  - Docker에서 실제 SES 이메일 발송과 중복 발송 제외 검증 완료
+- [x] Supabase migration 관리 적용
+  - 원격 스키마 baseline과 후속 migration 5개 적용
+  - backend의 `service_role` 전용 권한, 필수 컬럼 제약, HNSW 인덱스 구성
+- [x] Pulumi AWS 기본 인프라 배포
+  - Pulumi Cloud `dev` Stack과 `us-east-1` Provider 구성
+  - Private ECR `info-helper-dev` 구성
+    - `IMMUTABLE`, AES-256 암호화, `force_delete=False`
+  - 기존 SES v2 Email Identity Import 및 `protect=True` 적용
+  - VPC `10.0.0.0/16`, Internet Gateway 구성
+  - 서로 다른 가용영역의 Public Subnet 2개 구성
+  - Public Route Table과 `0.0.0.0/0 → Internet Gateway` Route 연결
+  - 인바운드 없음, HTTP·HTTPS 아웃바운드만 허용하는 ECS Task Security Group 구성
+- [x] ECS 실행 기반 리소스 배포
+  - ECS Cluster와 CloudWatch Log Group 구성
+  - ECS Task Execution Role과 Task Role 분리
+  - Execution Role에 ECR Pull·CloudWatch Logs 권한 연결
+  - Task Role에 SES `SendEmail` 최소 권한 연결
+- [x] SSM Parameter Store Secret 구성
+  - Google API Key와 Supabase Secret Key를 `SecureString`으로 저장
+  - Execution Role에 해당 Parameter를 읽는 `ssm:GetParameters` 권한 연결
+- [x] Fargate용 Docker 이미지 ECR Push
+  - 로컬 이미지 플랫폼: `linux/amd64`
+  - ECR 태그: `a3d9b7ffe40b7b228c8b5de8ec2d8c57eea60d33`
+  - Digest: `sha256:19de1df39ee40b079634b4246c3e742ea7d998c54439202c54fe696cff53e931`
+- [x] ECS Task Definition 코드 작성 및 검수
+  - Fargate, `awsvpc`, Linux `X86_64`, 1 vCPU·2GB 메모리 설정
+  - ECR 이미지 URI에 Commit SHA 태그 적용
+  - 일반 환경 변수와 SSM Secret 주입 구성
+  - Execution Role·Task Role·CloudWatch Logs 연결
+  - Python 문법 검사와 `git diff --check` 통과
+  - 실제 `pulumi preview` 결과: Task Definition 1개 생성, 기존 21개 리소스 변경 없음
 
 ## 진행 중인 작업
 
+- [ ] ECS Task Definition 배포
+  - 진행 상황: 코드 작성과 Preview 완료, 아직 `pulumi up`은 실행하지 않음
+  - 대상 변경: `aws:ecs:TaskDefinition app-task-definition` 1개 생성
+  - 기존 리소스: 21개 unchanged, 수정·교체·삭제 없음
+  - 다음 단계: `pulumi up` 후 Task Definition ARN Output 확인
+- [x] ECS Task Definition 구성 커밋
+  - 커밋: `12a4a63 feat: ECS Task Definition 구성`
+  - 변경 내용: `imageTag` 설정, Task Definition 생성 함수와 메인 조립 코드
 - [ ] 추천 점수 품질 조정
-  - 진행 상황: 최고 점수가 약 `0.60`이어서 연결 검증용으로 기준을 `0.6`까지 낮춤
-  - 다음 단계: 실제 추천 내용을 검토하고 기준 유지 또는 점수식 개선 결정
-- [ ] Pulumi AWS 배포
-  - 진행 상황: ECR, SES Identity Import, VPC, Internet Gateway 배포 완료
-  - 현재 Pulumi Output: `ecr_repository_url`, `ses_identity_arn`, `vpc_id`
-  - 다음 단계: Public Subnet과 Route Table을 정의하고 `0.0.0.0/0 → Internet Gateway` 경로 연결
-  - SES 전략: Pulumi는 AWS를 자동 탐색해 get-or-create하지 않으므로, `us-east-1`에 이미 인증된 Identity는 최초 1회 `pulumi import`로 `dev` State에 연결
-  - Import 후에는 일반 `aws.sesv2.EmailIdentity` 선언과 `protect=True`로 관리
-  - 새로운 Stack·AWS 계정에 Identity가 없으면 동일한 선언이 새 Identity를 생성하며 이메일 인증이 별도로 필요
-  - 이후 ECS Task Role에 `ses:SendEmail` 최소 권한을 부여하고 Access Key는 컨테이너에 저장하지 않음
+  - 현재 연결 검증을 위해 최종 추천 기준을 `total_score >= 0.6`으로 사용
+  - 실제 추천 품질을 검토한 뒤 기준 또는 점수식 개선 필요
 
 ## 다음에 해야 할 작업
 
-1. Public Subnet 수와 가용영역을 결정하고 Subnet을 정의한다.
-2. Public Route Table, `0.0.0.0/0 → Internet Gateway` Route, Subnet Association을 정의한다.
-3. 인바운드가 없는 ECS Task Security Group과 필요한 아웃바운드 정책을 정의한다.
-4. ECS Cluster와 CloudWatch Log Group을 정의한다.
-5. Task Execution Role, Task Role, Scheduler Role, ECS Task Definition을 정의한다.
-6. `GOOGLE_API_KEY`, `SUPABASE_SECRET_KEY`를 SSM Parameter Store `SecureString`으로 연결한다.
-7. ECR 이미지 Push와 Fargate Task 수동 실행을 검증한다.
-8. GitHub Actions에서 PR Preview와 `main` 배포를 구성하고 AWS 인증은 OIDC를 사용한다.
-9. 수동 실행 성공 후 `Asia/Seoul` 기준 하루 1회 Scheduler를 활성화한다.
+1. AWS SSO와 프로젝트 환경을 준비한다.
+
+   ```bash
+   conda activate infohelper
+   export AWS_PROFILE=infohelper
+   aws sso login --profile infohelper
+   cd infra
+   ```
+
+2. 변경 계획을 한 번 더 확인하고 Task Definition을 배포한다.
+
+   ```bash
+   pulumi preview
+   pulumi up
+   pulumi stack output ecs_task_definition_arn
+   ```
+
+3. 배포된 Task Definition으로 Fargate Task를 한 번 수동 실행한다.
+   - Public Subnet 2개와 ECS Task Security Group 사용
+   - Public IP 할당 활성화
+   - 실행 후 CloudWatch Logs에서 다음 항목 확인
+     - ECR 이미지 Pull 성공
+     - SSM Secret 주입 성공
+     - Supabase·Google API 호출 성공
+     - SES 발송 성공
+     - 프로세스 정상 종료
+4. 수동 실행 결과를 확인한 뒤 EventBridge Scheduler 실행 Role과 하루 1회 Schedule을 구성한다.
+5. 이후 GitHub Actions의 PR Preview·배포와 AWS OIDC 인증을 구성한다.
 
 ## 주의사항
 
-- 실행 환경은 Miniconda `infohelper`, Python 3.12임
+- Task Definition은 실행 설계도이므로 `pulumi up`만으로 컨테이너가 실행되지는 않음
+- 로컬 AWS 인증은 `AWS_PROFILE=infohelper`와 SSO를 사용하고 Access Key를 저장하지 않음
+- ECS 컨테이너에서는 로컬 SSO가 아니라 IAM Task Role을 사용함
 - `.env`, API Key, Supabase Secret Key, AWS 인증정보를 출력하거나 커밋하지 않음
-- 로컬 AWS 인증은 `AWS_PROFILE=infohelper`를 사용하고 Access Key를 `.env`에 저장하지 않음
-- ECS에서는 SSO나 Access Key가 아니라 IAM Task Role을 사용해야 함
-- 현재 SSO Permission Set은 `AdministratorAccess`이므로 인프라 구축 후 최소 권한으로 축소해야 함
-- 로컬 Pulumi 명령은 `infohelper` Conda 환경과 `AWS_PROFILE=infohelper`를 사용함
-- ECR은 `IMMUTABLE`이므로 GitHub Actions에서 `latest` 같은 태그를 재사용하지 않고 Commit SHA 등 고유 태그를 사용해야 함
-- ECR은 `force_delete=False`이므로 이미지가 있으면 Repository 삭제가 실패하는 것이 정상임
-- SES Identity의 Pulumi 논리 이름은 Import된 State와 동일한 `sender_identity`를 유지해야 함
-- SES Identity는 `protect=True`이므로 삭제나 교체가 필요한 경우 보호를 명시적으로 해제해야 함
-- `sesSenderEmail`이 Secret config라 이를 사용해 만든 SES ARN Output도 Secret으로 전파됨
-- 로컬 Pulumi CLI는 `v3.208.0`으로 동작했으며 SDK는 `3.x` 범위이므로 추후 CLI 업데이트 권장
-- `data/userInfo.md`가 Docker 이미지에 포함되므로 ECR은 Private으로 유지하고 개인정보 취급에 주의
-- 최신 중복 발송 방지 코드는 기존 `info-helper:local` 이미지에 포함되지 않았을 수 있으므로 반드시 재빌드해야 함
-- `recommendation_deliveries`는 RLS가 활성화되어 있으며 backend는 `SUPABASE_SECRET_KEY`를 사용함
-- Supabase 스키마와 RPC는 `supabase/migrations/`에서 관리하며 적용된 migration SQL은 수정하지 않고 새 migration을 추가함
-- 원격 DB 변경 전 `supabase db push --dry-run`으로 적용 대상을 먼저 확인함
-- `supabase db reset --linked`는 원격 DB를 초기화할 수 있으므로 실행하지 않음
-- SES 발송 성공 후 DB 저장 전에 프로세스가 중단되면 다음 실행에서 중복 발송될 수 있음. SES와 DB 사이의 분산 트랜잭션 한계임
-- 다중 사용자 발송은 순차 처리되며 한 사용자의 SES 오류가 이후 사용자 처리를 중단시킴
-- 현재 추천 기준 `0.6`은 이메일 연결 검증을 위해 낮춘 값임
+- `Pulumi.dev.yaml`의 Secret 값은 Pulumi 암호문 상태를 유지해야 함
+- ECR은 `IMMUTABLE`이므로 같은 태그를 새로운 이미지에 다시 Push할 수 없음
+- Dockerfile이나 애플리케이션 코드가 바뀌면 이미지를 다시 빌드·Push하고 `imageTag`를 새 Commit SHA로 변경해야 함
+- SES Identity의 Pulumi 논리 이름 `sender_identity`를 변경하면 Import된 리소스 교체 문제가 생길 수 있음
+- SES Identity는 `protect=True`이므로 의도하지 않은 삭제·교체를 피해야 함
+- SSM Secret은 ECS Task **Execution Role**이 Task 시작 전에 조회함
+- SES 호출은 컨테이너 애플리케이션이 ECS Task **Task Role**로 수행함
 - `main.py` 실행은 실제 크롤링·Gemini·Supabase·SES 요청을 발생시킴
-- `notice_chunks.embedding`과 query embedding은 모두 `gemini-embedding-2`, 1,536차원을 유지
-- `match_notice_chunks`와 `find_delivered_pairs` SQL 정의는 baseline migration에 포함됨
-- `test/mvp1/requests_test.py`는 import 시 실제 네트워크 요청을 하므로 전체 `pytest` 실행을 피함
-- `RequestsDependencyWarning`, `LangChainPendingDeprecationWarning`은 현재 테스트 실패 원인이 아님
-- 프로젝트 규칙상 `main`/`master` 브랜치에 직접 push하지 않음
+- `data/userInfo.md`가 Docker 이미지에 포함되므로 ECR을 Private으로 유지하고 개인정보 취급에 주의
+- Supabase 적용 완료 migration은 수정하지 않고 새 migration을 추가함
+- `supabase db reset --linked`는 원격 DB를 초기화할 수 있으므로 실행하지 않음
+- `test/mvp1/requests_test.py`는 import 시 실제 네트워크 요청을 실행하므로 전체 `pytest` 실행을 피함
+- 프로젝트 규칙상 `main`/`master` 브랜치에 직접 Push하지 않음
 
 ## 관련 파일
 
-- `main.py` - 전체 실행 진입점, History·Sender·Service 의존성 주입
-- `delivery/models.py` - `DeliveryKey`, `EmailMessage` 불변 모델
-- `delivery/history.py` - 발송 이력 Protocol과 Supabase 구현체
-- `delivery/service.py` - 중복 제거, 사용자별 발송, 성공 이력 저장 조정
-- `delivery/templates.py` - 개수 제한 없는 HTML·Plain Text Digest 렌더링
-- `delivery/sender.py` - SES v2 이메일 발송
-- `test/delivery/test_history.py` - Supabase History 단위 테스트
-- `test/delivery/test_service.py` - 중복 제거·성공 저장·실패 미저장 테스트
-- `test/delivery/test_templates.py` - 모든 추천 표시 테스트
-- `ai_graphs/shared/context.py` - Gemini·Supabase 공통 클라이언트 Context
-- `Dockerfile` - Python 3.12, Crawl4AI·Chromium, 프로젝트 실행 이미지
-- `pyproject.toml` - Python 버전과 의존성·패키지 설정
-- `infra/Pulumi.yaml` - Pulumi 프로젝트와 Python Runtime 설정
-- `infra/Pulumi.dev.yaml` - `dev` Stack 리전·ECR·SES Secret·VPC CIDR 설정
-- `infra/pyproject.toml` - Pulumi Python SDK와 AWS Provider 의존성
-- `infra/__main__.py` - ECR, SES Identity, VPC, Internet Gateway 정의와 Stack Output
-- `supabase/config.toml` - Supabase 로컬 개발·migration 설정
-- `supabase/migrations/20260805034940_remote_schema.sql` - 기존 원격 DB 구조 baseline
-- `supabase/migrations/20260805041354_restrict_backend_permissions.sql` - backend 전용 권한 제한
-- `supabase/migrations/20260805043502_add_notice_chunks_not_null.sql` - 공지 필수 컬럼 제약
-- `supabase/migrations/20260805043525_add_notice_chunks_hnsw_index.sql` - cosine HNSW 인덱스
-- `supabase/migrations/20260805043956_restrict_default_function_permissions.sql` - 미래 RPC의 PUBLIC 기본 실행 권한 차단
+- `infra/__main__.py` - Pulumi 설정 로딩, 리소스 조립, Stack Output
+- `infra/network.py` - VPC, Public Subnet, Route, Security Group
+- `infra/iam.py` - ECS Execution Role, Task Role, IAM 정책
+- `infra/ecs.py` - ECS Cluster, Log Group, Task Definition
+- `infra/ssm_parameters.py` - SSM `SecureString` Parameter
+- `infra/Pulumi.dev.yaml` - `dev` Stack 설정과 암호화된 Secret
+- `Dockerfile` - Python 3.12·Chromium 기반 실행 이미지
+- `main.py` - 실제 배치 실행 진입점
+- `delivery/` - 이메일 생성·SES 발송·중복 발송 방지
+- `supabase/migrations/` - 원격 DB 스키마 migration
 - `docs/HANDOFF.md` - 현재 작업 인계 문서
 
 ## 마지막 상태
 
 - 브랜치: `feat/deployment-setup`
-- 마지막 작업 커밋: Pulumi AWS 기본 인프라 구성과 배포 인계 갱신
-- 원격 상태: `origin/feat/deployment-setup`보다 3커밋 앞섬, push하지 않음
-- 테스트 상태: `23 passed, 1 warning`
-- 테스트 명령:
-  - `conda run -n infohelper python -m pytest -q test/delivery test/recommendation_graph/test_graph.py test/ingestion_graph/test_nodes.py`
-- Python 문법·import 컴파일 통과
-- `pip wheel --no-deps --no-build-isolation .` 빌드 통과
-- Docker 이미지: `info-helper:local`, `linux/amd64`; 최신 커밋 포함 위해 재빌드 필요
-- Supabase migration 상태: 5개 모두 원격 적용, `LOCAL = REMOTE`
-- Pulumi 상태: `dev` Stack Update #4 성공, ECR·SES Identity·VPC·Internet Gateway 관리 중
-- 현재 미커밋 변경 없음
-- `*.egg-info/`, `__pycache__/`는 빌드·실행 산출물이므로 `.gitignore`에서 제외
-- 이번 세션에서는 애플리케이션 테스트를 다시 실행하지 않았고, Pulumi Preview·Up만 검증함
+- 마지막 기능 커밋: `12a4a63 feat: ECS Task Definition 구성`
+- 원격 상태: `origin/feat/deployment-setup`보다 2커밋 앞섬, Push하지 않음
+- Pulumi 실제 배포 상태: 21개 리소스 관리 중, Task Definition은 아직 미배포
+- 마지막 Pulumi Preview: Task Definition 1개 생성, 21개 unchanged
+- 정적 검증: Python 컴파일 및 `git diff --check` 통과
+- 애플리케이션 테스트: 이번 Task Definition 작업 후 다시 실행하지 않음
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 ECS Task Definition 배포부터 이어서 진행해줘`
