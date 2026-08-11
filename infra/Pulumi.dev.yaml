@@ -12,3 +12,6 @@ config:
   info-helper-infra:recipientEmail:
     secure: AAABAEX4+fMakGH+1kwKRhXIcA0Vw9oUZy3OVK7h4QnfjtwJL22z7wgIJp9uEzx8nos=
   info-helper-infra:imageTag: a3d9b7ffe40b7b228c8b5de8ec2d8c57eea60d33
+  info-helper-infra:scheduleExpression: cron(7 14 * * ? *)
+  info-helper-infra:scheduleTimezone: Asia/Seoul
+  info-helper-infra:scheduleState: ENABLED

@@ -11,6 +11,11 @@ class EcsIamResources:
     task_role: aws.iam.Role
 
 
+@dataclass(frozen=True)
+class SchedulerIamResources:
+    execution_role: aws.iam.Role
+
+
 def create_ecs_iam_resources(
     *,
     stack: str,
@@ -111,3 +116,79 @@ def create_ecs_iam_resources(
         task_execution_role=ecs_task_execution_role,
         task_role=ecs_task_role,
     )
+
+
+def create_scheduler_iam_resources(
+    *,
+    stack: str,
+    cluster_arn: pulumi.Input[str],
+    task_definition_arn: pulumi.Input[str],
+    ecs_role_arns: Sequence[pulumi.Input[str]],
+    common_tags: Mapping[str, str],
+) -> SchedulerIamResources:
+    """EventBridge Scheduler가 ECS Task를 실행할 IAM 리소스를 생성한다."""
+
+    # EventBridge Scheduler 서비스만 이 Role을 사용할 수 있도록 허용
+    assume_role_policy = aws.iam.get_policy_document(
+        statements=[
+            {
+                "effect": "Allow",
+                # 이 IAM Role의 권한을 잠시 빌려서 사용해도 된다”는 AWS STS 권한
+                "actions": ["sts:AssumeRole"],
+                "principals": [
+                    {
+                        "type": "Service",
+                        "identifiers": ["scheduler.amazonaws.com"],
+                    }
+                ],
+            }
+        ]
+    )
+
+    # Role을 먼저 생성하고 실제 권한은 아래 인라인 정책으로 연결
+    execution_role = aws.iam.Role(
+        "scheduler-execution-role",
+        name=f"info-helper-{stack}-scheduler-execution-role",
+        assume_role_policy=assume_role_policy.json,
+        tags=common_tags,
+    )
+
+    permission_policy: pulumi.Output[str] = pulumi.Output.json_dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                # ECS Task 실행가능하게 하는 권한
+                {
+                    "Effect": "Allow",
+                    "Action": ["ecs:RunTask"],
+                    "Resource": task_definition_arn,
+                    "Condition": {
+                        "ArnEquals": {
+                            "ecs:cluster": cluster_arn,
+                        }
+                    },
+                },
+                # Task Definition에 포함된 두 Role을 ECS Task가 사용하도록 허용
+                {
+                    "Effect": "Allow",
+                    "Action": ["iam:PassRole"],
+                    "Resource": list(ecs_role_arns),
+                    "Condition": {
+                        "StringEquals": {
+                            "iam:PassedToService": (
+                                "ecs-tasks.amazonaws.com"
+                            ),
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    aws.iam.RolePolicy(
+        "scheduler-execution-policy",
+        role=execution_role.id,
+        policy=permission_policy,
+    )
+
+    return SchedulerIamResources(execution_role=execution_role)

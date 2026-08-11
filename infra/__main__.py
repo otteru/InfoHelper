@@ -4,10 +4,10 @@ import pulumi
 import pulumi_aws as aws
 
 from ecs import create_ecs_resources, create_task_definition
-from iam import create_ecs_iam_resources
+from iam import create_ecs_iam_resources, create_scheduler_iam_resources
 from network import create_network_resources
 from ssm_parameters import create_secret_parameters
-
+from scheduler import create_daily_schedule
 
 config = pulumi.Config()
 repository_name: str = config.require("ecrRepositoryName")
@@ -27,6 +27,11 @@ recipient_email: pulumi.Output[str] = config.require_secret("recipientEmail")
 aws_config = pulumi.Config("aws")
 aws_region: str = aws_config.require("region")
 supabase_project_id: str = config.require("supabaseProjectId")
+
+# scheduler 관련
+schedule_expression: str = config.require("scheduleExpression")
+schedule_timezone: str = config.require("scheduleTimezone")
+schedule_state: str = config.require("scheduleState")
 
 # ECR
 repository = aws.ecr.Repository(
@@ -96,6 +101,33 @@ task_definition = create_task_definition(
         secret_parameters.supabase_secret_key_parameter.arn
     ),
     common_tags=common_tags,
+)
+
+# EventBridge Scheduler
+scheduler_iam = create_scheduler_iam_resources(
+    stack=stack,
+    cluster_arn=ecs.cluster.arn,
+    task_definition_arn=task_definition.arn,
+    ecs_role_arns=(
+        # ECS가 컨테이너를 준비 및 관리
+        ecs_iam.task_execution_role.arn,
+        # 컨테이너 내부 애플리케이션이 사용
+        ecs_iam.task_role.arn,
+    ),
+    common_tags=common_tags,
+)
+
+daily_schedule = create_daily_schedule(
+    stack=stack,
+    cluster_arn=ecs.cluster.arn,
+    task_definition_arn=task_definition.arn,
+    # Scheduler가 ECS RunTask를 호출할 때 사용할 Role
+    scheduler_role_arn=scheduler_iam.execution_role.arn,
+    subnet_ids=tuple(subnet.id for subnet in network.public_subnets),
+    security_group_id=network.ecs_task_security_group.id,
+    schedule_expression=schedule_expression,
+    schedule_timezone=schedule_timezone,
+    schedule_state=schedule_state,
 )
 
 pulumi.export("ecr_repository_url", repository.repository_url)
