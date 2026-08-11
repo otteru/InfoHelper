@@ -125,12 +125,12 @@
 ## 마지막 상태
 
 - 브랜치: `feat/github-actions`
-- HEAD: `50ede91 feat: GitHub Actions 검증 및 배포 워크플로 구성`
-- 원격 상태: `origin/feat/github-actions`보다 로컬이 2커밋 앞섬
-- 문서 변경: `docs/HANDOFF.md`, `docs/images/infohelper_architecture.png` 커밋 예정
+- PR: [#2 feat: GitHub Actions OIDC 기반 CI/CD 구성](https://github.com/otteru/InfoHelper/pull/2)
+- 원격 상태: GitHub Actions/OIDC 및 문서 커밋을 `origin/feat/github-actions`에 Push 완료
+- 최근 문서 커밋: `9eb6874 docs: AWS 아키텍처 및 작업 인계 갱신`
 - Pulumi Cloud `dev` Stack: version 15 배포 성공, 32개 리소스 관리
 - 정적 검증: Python 컴파일, Workflow YAML 파싱, 공백 검사 통과
 - 테스트: 네트워크 요청 없는 테스트 `23 passed`
 - 마지막 Preview: 시스템 Python에 Pulumi SDK가 없어 실패, Conda 환경에서 재실행 필요
-- 커밋 상태: OIDC와 Workflow 커밋 완료
+- 커밋 상태: OIDC, Workflow, AWS 아키텍처 이미지 커밋 완료
 - 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 Conda 환경 Pulumi Preview와 GitHub 설정 확인부터 이어서 진행해줘`
