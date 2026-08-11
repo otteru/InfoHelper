@@ -15,3 +15,5 @@ config:
   info-helper-infra:scheduleExpression: cron(0 8 * * ? *)
   info-helper-infra:scheduleTimezone: Asia/Seoul
   info-helper-infra:scheduleState: ENABLED
+  info-helper-infra:githubRepository: otteru/InfoHelper
+  info-helper-infra:githubEnvironment: dev
