@@ -30,7 +30,6 @@ def create_network_resources(
     )
 
     # Gateway
-    # TODO: Route Table 설정
     internet_gateway = aws.ec2.InternetGateway(
         "app-internet-gateway",
         vpc_id=vpc.id,
