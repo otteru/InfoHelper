@@ -1,9 +1,11 @@
 # .file
 .env
 .vscode
+.DS_Store
 
 # cache
 __pycache__
+*.egg-info/
 
 # crawl test output
 test/mvp2/test.md

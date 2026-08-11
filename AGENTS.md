@@ -9,7 +9,7 @@
 
 그리고 언젠가는 langgraph를 벗어나 plain python으로 하네스를 구축하는 것을 고려하고 있다.
 
--miniconda의 my_jupyter_env 환경에서 실행(conda activate my_jupyter_env)
+- Miniconda의 `infohelper` 환경에서 실행 (`conda activate infohelper`)
 
 ## 사용자 작업 스타일
 

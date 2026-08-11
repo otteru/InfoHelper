@@ -1,0 +1,17 @@
+config:
+  aws:region: us-east-1
+  info-helper-infra:ecrRepositoryName: info-helper-dev
+  info-helper-infra:sesSenderEmail:
+    secure: AAABACvvMSgut5kR18FGC/0V9lJjTgWAsmuBLZfBvxE3ITmv2xag3RperwkEfRdcWUg=
+  info-helper-infra:vpcCidr: 10.0.0.0/16
+  info-helper-infra:googleApiKey:
+    secure: AAABAMziLDyQdnvgMxf+an6CM+z/t+YxWtB9zaDds89d3ZKIF8xrUkdnuVXmp0rTTMeVfVJGWLTMCfz3K5TVxxqTvT+zX5+hG/abc4HxeAbR0H+8mA==
+  info-helper-infra:supabaseSecretKey:
+    secure: AAABAFi8ZlY8z+1G658oErQ+otyz4m+2cRItCESLJ8m+ux8oeyZHALv8mqhFUZqHFx09cnHWfeaybwb8xuxJUzS7hhKx+vZ7Ng==
+  info-helper-infra:supabaseProjectId: euohyyrswzasxuihoxyd
+  info-helper-infra:recipientEmail:
+    secure: AAABAEX4+fMakGH+1kwKRhXIcA0Vw9oUZy3OVK7h4QnfjtwJL22z7wgIJp9uEzx8nos=
+  info-helper-infra:imageTag: a3d9b7ffe40b7b228c8b5de8ec2d8c57eea60d33
+  info-helper-infra:scheduleExpression: cron(0 8 * * ? *)
+  info-helper-infra:scheduleTimezone: Asia/Seoul
+  info-helper-infra:scheduleState: ENABLED

@@ -2,156 +2,122 @@
 
 ## 완료된 작업
 
-- [x] Ingestion Graph MVP 구현
-  - Crawl4AI 배치 크롤링과 URL별 실패 격리
-  - 본문 1,000자 청크 분할
-  - Gemini `gemini-embedding-2` 1,536차원 임베딩 생성
-  - Supabase `(notice_id, chunk_index)` upsert와 오래된 tail 청크 삭제
-- [x] Recommendation Graph MVP 구현
-  - `data/userInfo.md`의 YAML query와 Markdown 프로필 분리
-  - query별 임베딩과 `match_notice_chunks` RPC 검색
-  - 유사도 `0.65` 미만 청크 제외
-  - `notice_id` 기준 후보 통합
-  - 최고 유사도 80% + query coverage 20%로 점수 계산
-  - 최종 추천 기준을 현재 `total_score >= 0.6`으로 적용
-- [x] Graph 공통 의존성 주입 구조 적용
-  - `GraphContext`로 Gemini·Supabase 클라이언트 공유
-  - `main.py`가 Context를 한 번 생성해 두 Graph에서 재사용
-- [x] 추천 이메일 Delivery 계층 구현
-  - 불변 `EmailMessage`
-  - HTML·Plain Text Digest 템플릿
-  - `EmailSender` Protocol과 SES v2 기반 `SesEmailSender`
-  - 추천 0건이면 발송하지 않고 SES 오류는 호출자에게 전파
-  - Fake Sender·SES Client를 이용한 단위 테스트 작성
-- [x] `main.py` 전체 일일 실행 흐름 연결
-  - `Ingestion → Recommendation → Delivery → SES`
-  - `recommendations` 결과를 `DeliveryService`에 전달
-  - 후보 수와 최종 추천 수 출력
-  - `SES_SENDER_EMAIL`, `RECIPIENT_EMAIL`, `AWS_REGION` 환경변수 사용
-  - boto3의 동적 반환 타입은 `SESV2Client`로 경계에서 `cast()`
-- [x] 실제 로컬 전체 실행 검증
-  - 최근 실행 결과: 저장 청크 29개, 크롤링 오류 0개, 추천 후보 14개
-  - 기존 기준 `0.7`에서는 최종 추천이 0개여서 메일을 보내지 않음을 확인
-  - 연결 검증을 위해 기준을 `0.6`으로 낮춘 뒤 실제 Digest 이메일 수신 확인
-- [x] AWS CLI SSO 구성
-  - IAM Identity Center 기반 프로필 이름: `infohelper`
-  - 기본 워크로드 리전: `us-east-1`
-  - 현재 Permission Set: `AdministratorAccess`
-  - 로컬에서는 Access Key가 아니라 SSO 임시 자격 증명 사용
-- [x] Amazon SES 로컬 발송 검증
-  - `us-east-1`에서 이메일 Identity 인증 완료
-  - SES CLI `send-email` 성공 및 실제 수신 확인
-  - `main.py`를 통한 실제 추천 이메일 수신 확인
-- [x] 최소 AWS 배포 구조 결정
-  - `EventBridge Scheduler → ECS Fargate Scheduled Task → main.py → SES`
-  - 24시간 ECS Service, ALB, API Gateway, SQS, Auto Scaling은 초기 제외
-  - NAT Gateway 없이 Public Subnet + Public IP + 인바운드 차단 사용 예정
-  - 1인·일 1회 기준 예상 AWS 비용은 월 약 `$1~$3`
+- [x] 애플리케이션 MVP 구현 및 Docker 실행 검증
+  - Ingestion → Recommendation → Delivery → SES 흐름 구현
+  - Supabase 기반 공지 청크 저장·검색과 이메일 중복 발송 방지 적용
+  - Docker에서 실제 SES 이메일 발송과 중복 발송 제외 검증 완료
+- [x] Supabase migration 관리 적용
+  - 원격 스키마 baseline과 후속 migration 5개 적용
+  - backend의 `service_role` 전용 권한, 필수 컬럼 제약, HNSW 인덱스 구성
+- [x] Pulumi AWS 기본 인프라 배포
+  - Pulumi Cloud `dev` Stack과 `us-east-1` Provider 구성
+  - Private ECR `info-helper-dev` 구성
+    - `IMMUTABLE`, AES-256 암호화, `force_delete=False`
+  - 기존 SES v2 Email Identity Import 및 `protect=True` 적용
+  - VPC `10.0.0.0/16`, Internet Gateway 구성
+  - 서로 다른 가용영역의 Public Subnet 2개 구성
+  - Public Route Table과 `0.0.0.0/0 → Internet Gateway` Route 연결
+  - 인바운드 없음, HTTP·HTTPS 아웃바운드만 허용하는 ECS Task Security Group 구성
+- [x] ECS 실행 기반 리소스 배포
+  - ECS Cluster와 CloudWatch Log Group 구성
+  - ECS Task Execution Role과 Task Role 분리
+  - Execution Role에 ECR Pull·CloudWatch Logs·SSM 조회 권한 연결
+  - Task Role에 SES `SendEmail` 최소 권한 연결
+- [x] Fargate용 Docker 이미지 ECR Push
+  - 플랫폼: `linux/amd64`
+  - ECR 태그: `a3d9b7ffe40b7b228c8b5de8ec2d8c57eea60d33`
+  - Digest: `sha256:19de1df39ee40b079634b4246c3e742ea7d998c54439202c54fe696cff53e931`
+- [x] ECS Task Definition 배포 및 수동 실행 검증
+  - Fargate, `awsvpc`, Linux `X86_64`, 1 vCPU·2GB 메모리 설정
+  - ECR 이미지, SSM Secret, IAM Role, CloudWatch Logs 연결
+  - Public Subnet 2개, ECS Task Security Group, Public IP로 수동 실행
+  - 크롤링·Gemini·Supabase·SES 전체 흐름 정상 동작
+  - 컨테이너 `Exit code: 0`과 실제 이메일 수신 확인
+- [x] EventBridge Scheduler IaC 작성 및 배포
+  - Scheduler 전용 Execution Role 생성
+    - 신뢰 주체: `scheduler.amazonaws.com`
+    - 지정 Task Definition에 대한 `ecs:RunTask`
+    - ECS Execution Role과 Task Role에 대한 `iam:PassRole`
+  - ECS Fargate Target과 Public Subnet·Security Group·Public IP 연결
+  - Pulumi Stack version 12: Scheduler 관련 리소스 3개 생성, 기존 22개 unchanged
+  - Pulumi Stack version 13: Schedule 활성화 및 실행 시간 변경 성공
+  - 14:07 KST 예약 실행으로 ECS Fargate Task 자동 실행 정상 동작 확인
 
 ## 진행 중인 작업
 
+- [ ] Scheduler 운영 실행 시간 변경 배포
+  - 코드 설정: `cron(0 8 * * ? *)`, `Asia/Seoul`, `ENABLED`
+  - 목표 실행 시간: 매일 08:00 KST
+  - 현재 상태: `infra/Pulumi.dev.yaml` 변경 완료, `pulumi up` 미실행
+  - 실제 AWS 배포 상태는 아직 매일 14:07 KST
 - [ ] 추천 점수 품질 조정
-  - 진행 상황: 실제 후보 최고 점수가 약 `0.6042`여서 메일 연결 검증용으로 기준을 `0.6`까지 낮춤
-  - 다음 단계: 실제 추천 내용을 검토하고 `0.6`을 유지할지 점수식·검색 품질을 개선할지 결정
-- [ ] 중복 발송 방지
-  - 진행 상황: 아직 발송 이력 테이블과 미발송 필터가 없음
-  - 다음 단계: Supabase `recommendation_deliveries` 테이블과 성공 후 기록 흐름 설계
-- [ ] Docker·Pulumi AWS 배포
-  - 진행 상황: 아키텍처와 리전만 결정했으며 Dockerfile, 의존성 명세, Pulumi 프로젝트는 아직 없음
-  - 다음 단계: 재현 가능한 Python 의존성부터 정리한 뒤 Docker 이미지 작성
+  - 현재 최종 추천 기준은 연결 검증을 위해 `total_score >= 0.6`
+  - 실제 추천 품질 검토 후 기준 또는 점수식 개선 필요
 
 ## 다음에 해야 할 작업
 
-1. 현재 미커밋 코드의 작은 정리를 완료한다.
-   - `delivery/sender.py` 첫 주석 끝의 `보관s` 오타 수정
-   - `test/recommendation_graph/test_graph.py` 경계값 테스트 들여쓰기 정리
-   - Supabase 환경변수 이름을 대문자로 통일할지 결정
-2. 의존성 명세를 만든다.
-   - 현재 저장소에는 `requirements.txt`, `pyproject.toml` 등의 재현 가능한 명세가 없음
-   - `my_jupyter_env`의 전체 패키지를 그대로 고정하지 말고 런타임·개발 의존성을 구분
-3. Dockerfile과 `.dockerignore`를 작성한다.
-   - 컨테이너 명령은 우선 `python main.py`
-   - Crawl4AI/Chromium 시스템 의존성 확인
-   - Apple Silicon 로컬과 Fargate 아키텍처 불일치를 피하도록 `linux/amd64` 기준 검증
-   - `.env`, AWS 설정, Git 파일을 이미지에 포함하지 않음
-4. 로컬 Docker 실행을 검증한다.
-   - Ingestion·Recommendation·SES까지 실제 실행하기 전 환경변수와 AWS SSO 전달 방식을 확인
-5. 중복 발송 방지를 구현한다.
-   - 초기 유니크 기준: `(user_id, notice_id, channel)`
-   - SES 성공 후에만 이력 저장
-   - SES 실패 시 발송 완료로 기록하지 않음
-6. Pulumi Python 프로젝트를 만든다.
-   - 리전: `us-east-1`
-   - VPC, Public Subnet, Internet Gateway, Route Table, Security Group
-   - ECR, ECS Cluster, CloudWatch Log Group
-   - Task Execution Role, Task Role, Scheduler Role
-   - ECS Task Definition과 비활성 상태의 EventBridge Scheduler
-7. 비밀 값을 SSM Parameter Store `SecureString`으로 연결한다.
-   - `GOOGLE_API_KEY`, Supabase Secret Key
-   - AWS Access Key는 저장하지 않고 ECS Task Role 사용
-   - 일반 설정은 ECS Task Definition 환경변수로 주입
-8. ECR에 이미지를 올리고 Fargate Task를 수동 실행한다.
-   - CloudWatch 로그, 외부 네트워크, SES 발송, 프로세스 종료 코드 확인
-9. 수동 실행 성공 후 EventBridge Scheduler를 활성화한다.
-   - `Asia/Seoul` 타임존으로 하루 1회 실행
-10. 실제 사용자에게 발송하기 전에 SES Production access를 신청한다.
-   - Sandbox에서는 인증된 수신자에게만 발송 가능
+1. Scheduler 운영 시간 변경을 Preview하고 배포한다.
+
+   ```bash
+   conda activate infohelper
+   export AWS_PROFILE=infohelper
+   aws sso login --profile infohelper
+   cd infra
+   pulumi preview
+   pulumi up
+   ```
+
+2. EventBridge Scheduler Console에서 매일 08:00 KST 설정을 확인한다.
+3. 다음 예약 실행에서 ECS Task 생성과 `Exit code: 0`을 확인한다.
+4. Feature 브랜치를 Push하고 배포 MVP PR을 생성한다.
+5. 이후 GitHub Actions의 PR Preview·배포와 AWS OIDC 인증을 구성한다.
 
 ## 주의사항
 
-- 실행 환경은 Miniconda `my_jupyter_env`임
-- `.env`와 API Key, Supabase Secret Key를 출력하거나 커밋하지 않음
-- 로컬 AWS 인증은 `AWS_PROFILE=infohelper`를 사용하고 Access Key를 `.env`에 저장하지 않음
-- ECS에서는 SSO나 Access Key가 아니라 IAM Task Role을 사용해야 함
-- SES Identity, Sandbox 상태, Production access는 리전별이며 현재 기준 리전은 `us-east-1`임
-- 현재 SSO Permission Set은 `AdministratorAccess`이므로 인프라 구축 후 최소 권한으로 축소해야 함
-- 현재 추천 기준 `0.6`은 실제 메일 연결 검증을 위해 낮춘 값임
-- 추천이 0개이면 `DeliveryService`가 정상적으로 발송을 생략함
-- 발송 이력이 없어 동일 공지가 재실행 시 중복 발송될 수 있음
-- `notice_chunks.embedding`과 query embedding은 모두 `gemini-embedding-2`, 1,536차원을 유지해야 함
-- `match_notice_chunks` SQL 정의는 저장소 밖 Supabase에 있음
+- EventBridge Scheduler에는 현재 별도 DLQ를 구성하지 않음
+- Task Definition은 실행 설계도이며, 수동 실행 또는 Scheduler 호출이 있어야 컨테이너가 실행됨
+- 로컬 AWS 인증은 `AWS_PROFILE=infohelper`와 SSO를 사용하고 Access Key를 저장하지 않음
+- ECS 컨테이너에서는 로컬 SSO가 아니라 IAM Task Role을 사용함
+- `.env`, API Key, Supabase Secret Key, AWS 인증정보를 출력하거나 커밋하지 않음
+- `Pulumi.dev.yaml`의 Secret 값은 Pulumi 암호문 상태를 유지해야 함
+- ECR은 `IMMUTABLE`이므로 같은 태그를 새로운 이미지에 다시 Push할 수 없음
+- Dockerfile이나 애플리케이션 코드가 바뀌면 이미지를 다시 빌드·Push하고 `imageTag`를 새 Commit SHA로 변경해야 함
+- SES Identity의 Pulumi 논리 이름 `sender_identity`를 변경하지 않음
+- SES Identity는 `protect=True`이므로 의도하지 않은 삭제·교체를 피해야 함
+- SSM Secret은 ECS Task **Execution Role**이 Task 시작 전에 조회함
+- SES 호출은 컨테이너 애플리케이션이 ECS Task **Task Role**로 수행함
+- Scheduler Execution Role은 `ecs:RunTask`와 두 ECS Role에 대한 `iam:PassRole`을 사용함
 - `main.py` 실행은 실제 크롤링·Gemini·Supabase·SES 요청을 발생시킴
-- `test/mvp1/requests_test.py`는 import 시 실제 네트워크 요청을 하므로 전체 `pytest` 실행을 피함
-- `RequestsDependencyWarning`, `LangChainPendingDeprecationWarning`은 현재 테스트 실패 원인이 아님
-- 다음 파일 삭제와 `AGENTS.md` 변경은 기존 사용자 변경이므로 임의 복구·커밋하지 않음
-  - `ai_graphs/ingestion_graph/prompt.py`
-  - `crawl_and_embed.py`
-  - `rag_answer.py`
-- `delivery/sender.py` 첫 주석의 `보관s`는 기존 미커밋 변경이며 아직 수정하지 않음
-- 프로젝트 규칙상 `main`/`master` 브랜치에 직접 push하지 않음
+- `data/userInfo.md`가 Docker 이미지에 포함되므로 ECR을 Private으로 유지하고 개인정보 취급에 주의
+- Supabase 적용 완료 migration은 수정하지 않고 새 migration을 추가함
+- `supabase db reset --linked`는 원격 DB를 초기화할 수 있으므로 실행하지 않음
+- `test/mvp1/requests_test.py`는 import 시 실제 네트워크 요청을 실행하므로 전체 `pytest` 실행을 피함
+- 프로젝트 규칙상 `main`/`master` 브랜치에 직접 Push하지 않음
 
 ## 관련 파일
 
-- `main.py` - 현재 전체 로컬 일일 실행 진입점
-- `ai_graphs/shared/context.py` - Graph 공통 Runtime Context
-- `ai_graphs/shared/clients.py` - Gemini·Supabase 클라이언트 생성
-- `ai_graphs/ingestion_graph/nodes.py` - 크롤링·임베딩·Supabase 저장
-- `ai_graphs/recommendation_graph/nodes.py` - 검색·후보 통합·최종 추천 및 `0.6` 기준
-- `ai_graphs/recommendation_graph/graph.py` - Recommendation Graph 연결
-- `delivery/models.py` - 불변 `EmailMessage`
-- `delivery/templates.py` - HTML·Plain Text Digest 렌더링
-- `delivery/service.py` - 이메일 조립과 추천 0건 미발송 정책
-- `delivery/sender.py` - SES v2 요청 구현체
-- `test/delivery/` - Delivery 템플릿·Sender·Service 테스트
-- `test/recommendation_graph/test_graph.py` - Recommendation Graph 및 점수 경계 테스트
-- `docs/HANDOFF.md` - 현재 인계 문서
+- `infra/__main__.py` - Pulumi 설정 로딩과 전체 리소스 조립
+- `infra/network.py` - VPC, Public Subnet, Route, Security Group
+- `infra/iam.py` - ECS Role과 Scheduler Execution Role 및 IAM 정책
+- `infra/ecs.py` - ECS Cluster, Log Group, Task Definition
+- `infra/scheduler.py` - EventBridge Scheduler와 ECS Fargate Target 설정
+- `infra/ssm_parameters.py` - SSM `SecureString` Parameter
+- `infra/Pulumi.dev.yaml` - `dev` Stack 설정과 암호화된 Secret
+- `Dockerfile` - Python 3.12·Chromium 기반 실행 이미지
+- `main.py` - 실제 배치 실행 진입점
+- `delivery/` - 이메일 생성·SES 발송·중복 발송 방지
+- `supabase/migrations/` - 원격 DB 스키마 migration
+- `docs/HANDOFF.md` - 현재 작업 인계 문서
 
 ## 마지막 상태
 
-- 브랜치: `main`
-- 마지막 커밋: `e58300d feat: 추천 이메일 Delivery 계층 구현`
-- 원격 상태: `origin/main`보다 1커밋 앞섬, push하지 않음
-- 실제 실행 상태: 로컬 `main.py` 전체 실행과 추천 이메일 수신 성공
-- 테스트 상태: `17 passed, 1 warning`
-- 테스트 명령:
-  - `conda run -n my_jupyter_env python -m pytest -q test/delivery test/recommendation_graph/test_graph.py test/ingestion_graph/test_nodes.py`
-- 미커밋 변경:
-  - `AGENTS.md`
-  - `ai_graphs/ingestion_graph/prompt.py` 삭제
-  - `crawl_and_embed.py` 삭제
-  - `rag_answer.py` 삭제
-  - `ai_graphs/recommendation_graph/nodes.py` 추천 기준 `0.6`
-  - `test/recommendation_graph/test_graph.py` 기준값 테스트 수정
-  - `main.py` 전체 Delivery 연결과 최종 추천 로그
-  - `delivery/sender.py` 주석 오타
-  - `docs/HANDOFF.md` 현재 상태 갱신
+- 브랜치: `feat/deployment-setup`
+- 마지막 기능 커밋: `cd87dde feat: EventBridge Scheduler 자동 실행 구성`
+- 원격 상태: `origin/feat/deployment-setup`보다 로컬 커밋이 앞서며 아직 Push하지 않음
+- Pulumi Cloud `dev` Stack: version 13 배포 성공, 총 25개 리소스 관리
+- 실제 EventBridge Schedule: `info-helper-dev-daily`, `ENABLED`, 매일 14:07 KST
+- 로컬 운영 시간 설정: 매일 08:00 KST, 아직 `pulumi up` 미실행
+- 자동 실행 상태: 14:07 예약 호출로 ECS Fargate Task 자동 실행 정상 동작 확인
+- 정적 검증: Python 컴파일과 `git diff --check` 통과
+- 린트·타입 검사: 현재 `infohelper` 환경에 `ruff`, `mypy` 미설치
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 Scheduler 08:00 운영 시간 배포부터 이어서 진행해줘`

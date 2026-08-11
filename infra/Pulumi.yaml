@@ -1,0 +1,4 @@
+name: info-helper-infra
+runtime:
+  name: python
+description: InfoHelper AWS 인프라
