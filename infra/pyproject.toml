@@ -6,3 +6,6 @@ dependencies = [
     "pulumi>=3,<4",
     "pulumi-aws>=7,<8",
 ]
+
+[tool.setuptools]
+py-modules = []
