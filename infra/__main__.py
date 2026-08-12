@@ -8,6 +8,7 @@ from iam import create_ecs_iam_resources, create_scheduler_iam_resources
 from network import create_network_resources
 from ssm_parameters import create_secret_parameters
 from scheduler import create_daily_schedule
+from github_oidc import create_github_oidc_resources
 
 config = pulumi.Config()
 repository_name: str = config.require("ecrRepositoryName")
@@ -32,6 +33,10 @@ supabase_project_id: str = config.require("supabaseProjectId")
 schedule_expression: str = config.require("scheduleExpression")
 schedule_timezone: str = config.require("scheduleTimezone")
 schedule_state: str = config.require("scheduleState")
+
+# github OIDC
+github_repository: str = config.require("githubRepository")
+github_environment: str = config.require("githubEnvironment")
 
 # ECR
 repository = aws.ecr.Repository(
@@ -130,6 +135,19 @@ daily_schedule = create_daily_schedule(
     schedule_state=schedule_state,
 )
 
+# GitHub OIDC
+github_oidc = create_github_oidc_resources(
+    stack=stack,
+    github_repository=github_repository,
+    github_environment=github_environment,
+    managed_role_arns=(
+        ecs_iam.task_execution_role.arn,
+        ecs_iam.task_role.arn,
+        scheduler_iam.execution_role.arn,
+    ),
+    common_tags=common_tags,
+)
+
 pulumi.export("ecr_repository_url", repository.repository_url)
 pulumi.export("ses_identity_arn", sender_identity.arn)
 pulumi.export("vpc_id", network.vpc.id)
@@ -149,3 +167,11 @@ pulumi.export(
 )
 pulumi.export("ecs_task_role_arn", ecs_iam.task_role.arn)
 pulumi.export("ecs_task_definition_arn", task_definition.arn)
+pulumi.export(
+    "github_preview_role_arn",
+    github_oidc.preview_role.arn,
+)
+pulumi.export(
+    "github_deploy_role_arn",
+    github_oidc.deploy_role.arn,
+)
