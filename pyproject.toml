@@ -31,5 +31,5 @@ py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ai_graphs*", "delivery*"]
+include = ["app*", "ai_graphs*", "delivery*", "integrations*"]
 namespaces = true

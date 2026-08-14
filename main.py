@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from ai_graphs.ingestion_graph.graph import create_ingestion_graph
 from ai_graphs.recommendation_graph.graph import create_recommendation_graph
-from ai_graphs.shared.clients import (
+from integrations.clients import (
     create_gemini_client,
     create_supabase_client,
 )
