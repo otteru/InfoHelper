@@ -9,3 +9,6 @@ __pycache__
 
 # crawl test output
 test/mvp2/test.md
+
+# generated blog assets
+/docs/blog-assets/
