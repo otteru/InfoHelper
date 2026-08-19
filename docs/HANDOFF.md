@@ -41,30 +41,49 @@
   - `POST /api/v1/sources` 실제 요청에서 `201 Created` 확인
   - PostgreSQL이 생성한 UUID와 `created_at` 응답 및 Table Editor 저장 확인
   - `.env.local`을 `.gitignore`에 추가해 로컬 Secret Key 커밋 방지
+- [x] 사이트별 크롤링 규칙 테이블 구성
+  - `sources 1:N source_crawl_rules` 관계 migration 작성
+  - 사이트별 `version`과 JSON 형식의 `rule_schema_version` 분리
+  - 규칙 생명주기 `candidate / active / retired / rejected` 구성
+  - 최초 검증 상태 `pending / passed / failed` 구성
+  - active 규칙만 `unknown / healthy / degraded / broken` 운영 상태를 갖도록 CHECK 구성
+  - Source당 active 규칙 하나만 허용하는 partial unique index 구성
+  - JSON object 형태의 `rule_definition`, 생성 주체, 검증 시각 저장
+  - RLS 활성화와 `service_role` 전용 권한 구성
+  - 로컬 migration 적용과 DB lint, 제약조건 검증 완료
+- [x] Crawl4AI CSS 규칙 모델 기반 구성
+  - MVP에서는 XPath와 URL 패턴 전략을 별도로 지원하지 않고 CSS 스키마만 사용하기로 결정
+  - `CrawlRuleDefinition`으로 공지 행의 `baseSelector`와 추출 필드를 표현
+  - `CrawlRuleField`로 `text`와 `attribute` 추출 규칙 표현
+  - 규칙마다 하나 이상의 추출 필드를 요구
+  - `attribute` 타입에 속성명이 없으면 Pydantic 검증 실패
+  - Crawl4AI 전달 시 `model_dump(mode="json", by_alias=True, exclude_none=True)` 사용
+  - CSS 규칙 정상 직렬화와 잘못된 attribute 규칙 단위 테스트 작성
 
 ## 진행 중인 작업
 
 - [ ] 사이트별 크롤링 규칙 설계
-  - 현재 `crawl_source_page()`가 상세 공지 링크를 `"artclView.do"`로 하드코딩함
-  - 다른 사이트를 등록해도 현재 구조에서는 상세 공지를 찾을 수 없음
-  - 사용자·구독보다 먼저 Source를 실제 크롤링 가능한 설정 단위로 완성하기로 결정
+  - DB migration과 CSS 규칙 Pydantic 모델까지 완료
+  - 다음 단계는 DB 행 전체 모델과 `SourceCrawlRuleRepository` 구현
+  - 현재 `crawl_source_page()`의 `"artclView.do"` 하드코딩은 아직 남아 있음
 - [ ] 사용자·구독 관리
   - `users`와 `sources`의 다대다 관계를 `subscriptions`로 구성할 예정
   - 사이트별 크롤링 규칙과 DB 기반 Ingestion 연결 이후 진행
 
 ## 다음에 해야 할 작업
 
-1. 사이트별 크롤링 규칙을 Source 모델에 추가한다.
-   - MVP 후보: `detail_url_pattern`, `is_active`
-   - `detail_url_pattern`은 상세 공지 URL 판별에 사용한다.
-   - CSS selector나 사이트별 전용 파서는 실제 필요가 생길 때 확장한다.
-2. Source 스키마, migration, Repository, API 테스트에 크롤링 규칙을 반영한다.
-3. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources` 테이블 조회로 변경한다.
-4. `"artclView.do"` 하드코딩을 Source별 `detail_url_pattern` 사용으로 변경한다.
-5. 필요하면 Source 단건·목록 조회와 활성화 상태 변경 API를 추가한다.
-6. `users` 테이블/API를 설계한다.
-7. `subscriptions(user_id, source_id)` 관계 테이블/API를 설계한다.
-8. 이후 `data/userInfo.md`와 `RECIPIENT_EMAIL`을 사용자·추천 설정 DB 조회로 전환한다.
+1. `source_crawl_rules` DB 행 전체를 표현하는 Pydantic 모델을 작성한다.
+2. `SourceCrawlRuleRepository`와 단위 테스트를 작성한다.
+   - candidate 규칙 생성
+   - Source별 active 규칙 조회
+   - 검증 상태 및 운영 상태 변경
+   - 규칙 활성화와 기존 active 규칙 retired 전환
+3. 현재 건국대학교 사이트의 CSS 스키마를 생성해 첫 규칙으로 저장한다.
+4. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources`와 active 규칙 조회로 변경한다.
+5. `crawl_source_page()`가 `JsonCssExtractionStrategy`로 DB 규칙을 실행하도록 변경한다.
+6. CSS 규칙 생성·샘플 검증·후보 활성화 흐름을 구현한다.
+7. 운영 실패 감지와 새 후보 규칙 자동 생성·교체 흐름을 구현한다.
+8. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
 
 ## 중기 로드맵
 
@@ -95,6 +114,10 @@ users 1 ── N subscriptions N ── 1 sources
 - `FakeSourceRepository`는 API 테스트용이며 `test/api/test_sources.py`에만 둔다.
 - Repository 테스트는 실제 Repository와 Mock Client를 조합한다. Mock Repository 테스트가 아니다.
 - `sources` migration은 로컬에서만 검증했으며 원격 Supabase에는 적용하지 않았다.
+- `source_crawl_rules` migration도 로컬에만 적용했으며 원격 Supabase에는 적용하지 않았다.
+- inactive 규칙의 `health_status`는 `NULL`이고 active 규칙만 운영 상태값을 갖는다.
+- 규칙은 실행 코드나 URL 패턴이 아니라 Crawl4AI CSS 스키마를 `rule_definition` JSONB에 저장한다.
+- `CrawlRuleDefinition.fields`는 tuple이므로 Crawl4AI 전달 시 `model_dump(mode="json", by_alias=True, exclude_none=True)`로 직렬화한다.
 - Supabase CLI는 프로젝트 루트에서 실행하고 Docker Desktop이 필요하다.
 - `supabase db reset`은 로컬 DB를 초기화한다. 원격 DB를 지우는 `--linked`를 붙이지 않는다.
 - `.env`, `.env.local`, Supabase Secret Key, API key, AWS 인증정보를 커밋하지 않는다.
@@ -116,6 +139,9 @@ users 1 ── N subscriptions N ── 1 sources
 - `app/exceptions.py` - Source 중복 URL 도메인 오류
 - `integrations/clients.py` - Gemini·Supabase 공통 클라이언트 생성
 - `supabase/migrations/20260814051424_create_sources.sql` - sources 테이블 migration
+- `supabase/migrations/20260819000000_create_source_crawl_rules.sql` - 사이트별 버전형 크롤링 규칙 migration
+- `app/schemas/crawl_rule.py` - 크롤링 규칙 상태와 Crawl4AI CSS 스키마 모델
+- `test/schemas/test_crawl_rule.py` - CSS 규칙 직렬화와 필드 검증 테스트
 - `test/api/test_sources.py` - Fake Repository를 사용하는 Source API 테스트
 - `test/repositories/test_source.py` - Mock Client를 사용하는 실제 Repository 단위 테스트
 - `ai_graphs/ingestion_graph/models.py` - 현재 배치용 Source 모델
@@ -125,12 +151,9 @@ users 1 ── N subscriptions N ── 1 sources
 
 ## 마지막 상태
 
-- 브랜치: `feat/fastapi-user-source-subscription`
-- 마지막 기능 커밋: `8505b89 feat: 공지 사이트 저장 API 연결 및 중복 처리`
-- 원격 동기화: 현재 브랜치와 upstream이 `0 ahead / 0 behind`
-- 작업 트리: clean
-- 안전 테스트: `pytest test/api test/repositories -q` → `11 passed`, 경고 1개
-- 컴파일: `python -m compileall -q app test/api test/repositories` 통과
+- 브랜치: `feat/source-crawl-rules`
+- 마지막 migration 커밋: `3ccb57a feat: 사이트별 크롤링 규칙 테이블 추가`
+- 안전 테스트: `conda run -n infohelper pytest test/schemas test/api test/repositories -q` → `14 passed`, 경고 1개
+- 컴파일: `conda run -n infohelper python -m compileall -q app test/schemas test/api test/repositories` 통과
 - 공백 검사: `git diff --check` 통과
-- 로컬 통합 검증: `POST /api/v1/sources` → `201 Created`, Table Editor 저장 확인
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 사이트별 크롤링 규칙 설계부터 이어서 진행해줘`
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 source_crawl_rules DB 행 Pydantic 모델부터 이어서 진행해줘`
