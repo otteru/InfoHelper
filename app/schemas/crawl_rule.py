@@ -1,5 +1,7 @@
 from enum import Enum
 from typing import Literal
+from uuid import UUID
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -73,3 +75,40 @@ class CrawlRuleDefinition(BaseModel):
     name: str
     base_selector: str = Field(alias="baseSelector")
     fields: tuple[CrawlRuleField, ...] = Field(min_length=1)
+
+# ========================= DB ===========================
+
+
+class SourceCrawlRuleCreate(BaseModel):
+    """새 candidate 규칙을 만들기 위해 필요한 입력값."""
+
+    source_id: UUID
+    rule_definition: CrawlRuleDefinition
+    generated_by: GeneratedBy
+
+
+class SourceCrawlRuleResponse(BaseModel):
+    """source_crawl_rules 테이블에서 조회·저장 후 반환되는 전체 행."""
+
+    id: UUID
+    source_id: UUID
+    version: int
+    rule_schema_version: int
+    status: RuleStatus
+    validation_status: ValidationStatus
+    health_status: HealthStatus | None
+    rule_definition: CrawlRuleDefinition
+    generated_by: GeneratedBy
+    created_at: datetime
+    validated_at: datetime | None
+    last_health_checked_at: datetime | None
+
+    @model_validator(mode="after")
+    def validate_health_status(self) -> "SourceCrawlRuleResponse":
+        if self.status is RuleStatus.ACTIVE and self.health_status is None:
+            raise ValueError("active 규칙에는 health_status가 필요합니다.")
+
+        if self.status is not RuleStatus.ACTIVE and self.health_status is not None:
+            raise ValueError("inactive 규칙의 health_status는 None이어야 합니다.")
+
+        return self
