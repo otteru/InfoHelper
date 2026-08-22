@@ -59,12 +59,24 @@
   - `attribute` 타입에 속성명이 없으면 Pydantic 검증 실패
   - Crawl4AI 전달 시 `model_dump(mode="json", by_alias=True, exclude_none=True)` 사용
   - CSS 규칙 정상 직렬화와 잘못된 attribute 규칙 단위 테스트 작성
+- [x] `source_crawl_rules` DB 행 Pydantic 모델 작성
+  - `SourceCrawlRuleCreate`는 candidate 생성 입력만 받는다
+  - `SourceCrawlRuleResponse`는 테이블 전체 행을 표현한다
+  - active 규칙만 `health_status`를 갖고, inactive는 `None`이어야 한다
+- [x] `SourceCrawlRuleRepository` 구현
+  - `create_candidate`는 Source별 최대 `version + 1`을 넣어 저장한다
+  - `get_active`는 Source의 active 규칙 한 행을 조회하고 없으면 `None`을 반환한다
+  - `update_validation_status`는 passed/failed일 때 `validated_at`을 기록하고 pending이면 비운다
+  - `update_health_status`는 active 규칙만 변경한다
+  - `activate`는 기존 active를 먼저 retired로 바꾼 뒤 대상 규칙을 active + `unknown`으로 전환한다
+  - Mock Client 단위 테스트 18개 작성
+  - 스키마 테스트와 모듈명이 겹치지 않도록 Repository 테스트 파일명은 `test_source_crawl_rule.py`를 사용한다
 
 ## 진행 중인 작업
 
 - [ ] 사이트별 크롤링 규칙 설계
-  - DB migration과 CSS 규칙 Pydantic 모델까지 완료
-  - 다음 단계는 DB 행 전체 모델과 `SourceCrawlRuleRepository` 구현
+  - DB 모델과 Repository까지 완료
+  - FastAPI 엔드포인트와 Ingestion 연결은 아직 없다
   - 현재 `crawl_source_page()`의 `"artclView.do"` 하드코딩은 아직 남아 있음
 - [ ] 사용자·구독 관리
   - `users`와 `sources`의 다대다 관계를 `subscriptions`로 구성할 예정
@@ -72,18 +84,12 @@
 
 ## 다음에 해야 할 작업
 
-1. `source_crawl_rules` DB 행 전체를 표현하는 Pydantic 모델을 작성한다.
-2. `SourceCrawlRuleRepository`와 단위 테스트를 작성한다.
-   - candidate 규칙 생성
-   - Source별 active 규칙 조회
-   - 검증 상태 및 운영 상태 변경
-   - 규칙 활성화와 기존 active 규칙 retired 전환
-3. 현재 건국대학교 사이트의 CSS 스키마를 생성해 첫 규칙으로 저장한다.
-4. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources`와 active 규칙 조회로 변경한다.
-5. `crawl_source_page()`가 `JsonCssExtractionStrategy`로 DB 규칙을 실행하도록 변경한다.
-6. CSS 규칙 생성·샘플 검증·후보 활성화 흐름을 구현한다.
-7. 운영 실패 감지와 새 후보 규칙 자동 생성·교체 흐름을 구현한다.
-8. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
+1. 현재 건국대학교 사이트의 CSS 스키마를 생성해 첫 규칙으로 저장한다.
+2. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources`와 active 규칙 조회로 변경한다.
+3. `crawl_source_page()`가 `JsonCssExtractionStrategy`로 DB 규칙을 실행하도록 변경한다.
+4. CSS 규칙 생성·샘플 검증·후보 활성화 흐름을 구현한다.
+5. 운영 실패 감지와 새 후보 규칙 자동 생성·교체 흐름을 구현한다.
+6. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
 
 ## 중기 로드맵
 
@@ -123,6 +129,10 @@ users 1 ── N subscriptions N ── 1 sources
 - `.env`, `.env.local`, Supabase Secret Key, API key, AWS 인증정보를 커밋하지 않는다.
 - 루트 `main.py`는 실제 크롤링·Gemini·Supabase·SES 요청을 실행한다.
 - `test/mvp1/requests_test.py`는 import 시 네트워크 요청을 실행하므로 전체 `pytest`는 피한다.
+- `SourceCrawlRuleRepository`는 FastAPI dependency와 Ingestion에 아직 연결하지 않았다.
+- `activate`는 `validation_status=passed`를 강제하지 않는다. 검증 후 활성화 흐름은 이후 단계에서 넣는다.
+- `version` 번호는 max+1이라 동시 생성 시 unique violation이 날 수 있다. MVP에서는 나중에 처리한다.
+- `update()` payload는 `dict[str, str | None]`이며 Supabase JSON 타입으로 `cast`한다.
 - 현재 Ingestion은 `data/userURL.json`을 읽고 상세 링크를 `"artclView.do"`로 판별한다.
 - 기존 `notice_chunks.source_id`는 문자열이고 신규 `sources.id`는 UUID이므로 연결 전 migration 전략이 필요하다.
 - 테스트 시 Requests 의존성 불일치 경고와 Starlette `TestClient`의 httpx 사용 중단 예정 경고가 남아 있다.
@@ -140,8 +150,10 @@ users 1 ── N subscriptions N ── 1 sources
 - `integrations/clients.py` - Gemini·Supabase 공통 클라이언트 생성
 - `supabase/migrations/20260814051424_create_sources.sql` - sources 테이블 migration
 - `supabase/migrations/20260819000000_create_source_crawl_rules.sql` - 사이트별 버전형 크롤링 규칙 migration
-- `app/schemas/crawl_rule.py` - 크롤링 규칙 상태와 Crawl4AI CSS 스키마 모델
+- `app/schemas/crawl_rule.py` - 크롤링 규칙 상태, CSS 스키마, DB 행 모델
+- `app/repositories/crawl_rule.py` - SourceCrawlRuleRepository Protocol과 Supabase 구현
 - `test/schemas/test_crawl_rule.py` - CSS 규칙 직렬화와 필드 검증 테스트
+- `test/repositories/test_source_crawl_rule.py` - Mock Client를 사용하는 크롤링 규칙 Repository 단위 테스트
 - `test/api/test_sources.py` - Fake Repository를 사용하는 Source API 테스트
 - `test/repositories/test_source.py` - Mock Client를 사용하는 실제 Repository 단위 테스트
 - `ai_graphs/ingestion_graph/models.py` - 현재 배치용 Source 모델
@@ -152,8 +164,7 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/source-crawl-rules`
-- 마지막 migration 커밋: `3ccb57a feat: 사이트별 크롤링 규칙 테이블 추가`
-- 안전 테스트: `conda run -n infohelper pytest test/schemas test/api test/repositories -q` → `14 passed`, 경고 1개
-- 컴파일: `conda run -n infohelper python -m compileall -q app test/schemas test/api test/repositories` 통과
+- 안전 테스트: `pytest test/schemas test/api test/repositories -q` → `32 passed`, 경고 1개
+- 컴파일: `python -m compileall -q app test/schemas test/api test/repositories` 통과
 - 공백 검사: `git diff --check` 통과
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 source_crawl_rules DB 행 Pydantic 모델부터 이어서 진행해줘`
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 건국대 CSS 스키마를 첫 크롤링 규칙으로 저장하는 작업부터 이어서 진행해줘`
