@@ -71,11 +71,18 @@
   - `activate`는 기존 active를 먼저 retired로 바꾼 뒤 대상 규칙을 active + `unknown`으로 전환한다
   - Mock Client 단위 테스트 18개 작성
   - 스키마 테스트와 모듈명이 겹치지 않도록 Repository 테스트 파일명은 `test_source_crawl_rule.py`를 사용한다
+- [x] 건국대 공지 CSS 스키마 생성 로컬 검증
+  - `JsonCssExtractionStrategy.generate_schema`로 title/url 규칙을 만들었다
+  - `schema_type`은 `"CSS"`여야 한다. 문서 예시의 `"css"`는 XPath 프롬프트가 나간다
+  - 생성 스키마는 `table.board-table tbody tr`과 `td.td-subject` 링크를 사용한다
+  - 같은 HTML에서 공지 29개를 추출했고, 제목 칸 링크는 모두 `artclView.do`였다
+  - 실험 스크립트는 `test/mvp2/test_generate_schema.py`이며 기본 pytest에서는 skip한다
 
 ## 진행 중인 작업
 
 - [ ] 사이트별 크롤링 규칙 설계
-  - DB 모델과 Repository까지 완료
+  - DB 모델, Repository, 건국대 `generate_schema` 검증까지 완료
+  - 생성된 규칙을 DB에 저장하는 단계는 아직이다
   - FastAPI 엔드포인트와 Ingestion 연결은 아직 없다
   - 현재 `crawl_source_page()`의 `"artclView.do"` 하드코딩은 아직 남아 있음
 - [ ] 사용자·구독 관리
@@ -84,11 +91,11 @@
 
 ## 다음에 해야 할 작업
 
-1. 현재 건국대학교 사이트의 CSS 스키마를 생성해 첫 규칙으로 저장한다.
-2. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources`와 active 규칙 조회로 변경한다.
-3. `crawl_source_page()`가 `JsonCssExtractionStrategy`로 DB 규칙을 실행하도록 변경한다.
-4. CSS 규칙 생성·샘플 검증·후보 활성화 흐름을 구현한다.
-5. 운영 실패 감지와 새 후보 규칙 자동 생성·교체 흐름을 구현한다.
+1. 검증된 건국대 스키마를 `CrawlRuleDefinition`으로 확인한 뒤 `generated_by=llm` candidate로 저장한다.
+2. 샘플 추출이 맞으면 `activate`한다.
+3. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources`와 active 규칙 조회로 변경한다.
+4. `crawl_source_page()`가 저장된 CSS 스키마를 `JsonCssExtractionStrategy`로 실행하도록 변경한다.
+5. 운영 실패 시 `generate_schema`로 새 candidate를 만들고 교체하는 흐름을 구현한다.
 6. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
 
 ## 중기 로드맵
@@ -123,6 +130,13 @@ users 1 ── N subscriptions N ── 1 sources
 - `source_crawl_rules` migration도 로컬에만 적용했으며 원격 Supabase에는 적용하지 않았다.
 - inactive 규칙의 `health_status`는 `NULL`이고 active 규칙만 운영 상태값을 갖는다.
 - 규칙은 실행 코드나 URL 패턴이 아니라 Crawl4AI CSS 스키마를 `rule_definition` JSONB에 저장한다.
+- CSS 규칙은 수동 작성하지 않는다. Crawl4AI가 LLM으로 스키마를 만들고, 이후 크롤링은 그 스키마만 반복 실행한다.
+- 생성 API는 `JsonCssExtractionStrategy.generate_schema(html=..., query=..., llm_config=LLMConfig(...), validate=True)`이다. `html` 대신 `url`을 넘길 수도 있다.
+- `schema_type`은 `"CSS"`처럼 대문자여야 한다. `"css"`를 넣으면 XPath 프롬프트가 나간다.
+- Playwright 브라우저가 없으면 `playwright install chromium`이 필요하다.
+- 생성 스키마의 url은 상대경로일 수 있다. 이후 절대 URL로 바꿔야 한다.
+- 이 기능은 매 크롤마다 LLM을 쓰는 `LLMExtractionStrategy`와 다르다. 스키마 생성은 한 번, 추출은 LLM 없이 한다.
+- `generated_by`의 `llm` 값이 이 생성 경로를 표시한다. 건국대 셀렉터 초안은 예시일 뿐 시드로 쓰지 않는다.
 - `CrawlRuleDefinition.fields`는 tuple이므로 Crawl4AI 전달 시 `model_dump(mode="json", by_alias=True, exclude_none=True)`로 직렬화한다.
 - Supabase CLI는 프로젝트 루트에서 실행하고 Docker Desktop이 필요하다.
 - `supabase db reset`은 로컬 DB를 초기화한다. 원격 DB를 지우는 `--linked`를 붙이지 않는다.
@@ -154,6 +168,7 @@ users 1 ── N subscriptions N ── 1 sources
 - `app/repositories/crawl_rule.py` - SourceCrawlRuleRepository Protocol과 Supabase 구현
 - `test/schemas/test_crawl_rule.py` - CSS 규칙 직렬화와 필드 검증 테스트
 - `test/repositories/test_source_crawl_rule.py` - Mock Client를 사용하는 크롤링 규칙 Repository 단위 테스트
+- `test/mvp2/test_generate_schema.py` - 건국대 공지 generate_schema 로컬 실험. `RUN_GENERATE_SCHEMA_TEST=1`일 때만 pytest가 실행한다
 - `test/api/test_sources.py` - Fake Repository를 사용하는 Source API 테스트
 - `test/repositories/test_source.py` - Mock Client를 사용하는 실제 Repository 단위 테스트
 - `ai_graphs/ingestion_graph/models.py` - 현재 배치용 Source 모델
@@ -167,4 +182,4 @@ users 1 ── N subscriptions N ── 1 sources
 - 안전 테스트: `pytest test/schemas test/api test/repositories -q` → `32 passed`, 경고 1개
 - 컴파일: `python -m compileall -q app test/schemas test/api test/repositories` 통과
 - 공백 검사: `git diff --check` 통과
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 건국대 CSS 스키마를 첫 크롤링 규칙으로 저장하는 작업부터 이어서 진행해줘`
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 검증된 건국대 CSS 스키마를 candidate로 저장하는 작업부터 이어서 진행해줘`
