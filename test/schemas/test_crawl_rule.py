@@ -69,3 +69,32 @@ def test_크롤링_규칙에는_하나_이상의_필드가_필요하다() -> Non
                 "fields": [],
             }
         )
+
+
+def test_건국대_생성_스키마를_모델로_검증한다() -> None:
+    """로컬 generate_schema로 확인한 건국대 CSS 규칙을 모델이 받는지 검증한다."""
+    schema = {
+        "name": "Notice Board Items",
+        "baseSelector": "table.board-table tbody tr",
+        "fields": [
+            {
+                "name": "title",
+                "selector": "td.td-subject strong",
+                "type": "text",
+            },
+            {
+                "name": "url",
+                "selector": "td.td-subject a",
+                "type": "attribute",
+                "attribute": "href",
+            },
+        ],
+    }
+
+    rule = CrawlRuleDefinition.model_validate(schema)
+
+    assert rule.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+    ) == schema
