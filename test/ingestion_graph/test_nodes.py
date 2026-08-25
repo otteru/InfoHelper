@@ -1,8 +1,40 @@
 import asyncio
 from types import SimpleNamespace
+from uuid import UUID
 
 from ai_graphs.ingestion_graph import nodes
 from ai_graphs.ingestion_graph.models import CrawlFailure, NoticeTarget, Source
+from app.schemas.crawl_rule import CrawlRuleDefinition
+
+DUMMY_RULE = CrawlRuleDefinition.model_validate(
+    {
+        "name": "공지 목록",
+        "baseSelector": "table tbody tr",
+        "fields": [
+            {
+                "name": "title",
+                "selector": "a",
+                "type": "text",
+            },
+            {
+                "name": "url",
+                "selector": "a",
+                "type": "attribute",
+                "attribute": "href",
+            },
+        ],
+    }
+)
+
+
+def make_source(name: str, url: str, source_id: str) -> Source:
+    """테스트용 Source를 만든다."""
+    return Source(
+        id=UUID(source_id),
+        name=name,
+        url=url,
+        rule_definition=DUMMY_RULE,
+    )
 
 
 class FailingCrawler:
@@ -43,7 +75,12 @@ def test_목록_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
             CrawlFailure(url=urls[0], message="TimeoutError: 시간 초과"),
             SimpleNamespace(
                 success=True,
-                links={"internal": [{"href": "https://example.com/artclView.do?id=1"}]},
+                html=(
+                    "<table><tbody><tr><td>"
+                    '<a href="https://example.com/artclView.do?id=1">공지</a>'
+                    "</td></tr></tbody></table>"
+                ),
+                cleaned_html=None,
             ),
         ]
 
@@ -53,19 +90,29 @@ def test_목록_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
         nodes.crawl_source_page(
             {
                 "sources": (
-                    Source(name="실패 출처", url="https://fail.example.com"),
-                    Source(name="성공 출처", url="https://success.example.com"),
+                    make_source(
+                        "실패 출처",
+                        "https://fail.example.com",
+                        "00000000-0000-0000-0000-000000000001",
+                    ),
+                    make_source(
+                        "성공 출처",
+                        "https://success.example.com",
+                        "00000000-0000-0000-0000-000000000002",
+                    ),
                 ),
             }
         )
     )
 
+    assert "notice_targets" in result
     assert result["notice_targets"] == (
         NoticeTarget(
             source_id="성공 출처",
             url="https://example.com/artclView.do?id=1",
         ),
     )
+    assert "errors" in result
     assert result["errors"] == (
         "https://fail.example.com: TimeoutError: 시간 초과",
     )
@@ -102,8 +149,10 @@ def test_상세_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
         )
     )
 
+    assert "notices" in result
     assert len(result["notices"]) == 1
     assert result["notices"][0].title == "성공 공지"
+    assert "errors" in result
     assert result["errors"] == (
         "https://fail.example.com/notice: RuntimeError: 브라우저 오류",
     )

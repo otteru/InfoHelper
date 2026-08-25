@@ -1,14 +1,19 @@
+from uuid import UUID
 from dataclasses import dataclass
 from datetime import date
 
+from app.schemas.crawl_rule import CrawlRuleDefinition
 
-# userURL.json 또는 이후 sources 테이블에서 읽어 온 크롤링 출처
+
+# sources 테이블에서 읽어 온 크롤링 출처
 @dataclass(frozen=True)
 class Source:
     """공지 목록 페이지를 제공하는 크롤링 출처."""
 
+    id: UUID
     name: str
     url: str
+    rule_definition: CrawlRuleDefinition
 
 
 @dataclass(frozen=True)

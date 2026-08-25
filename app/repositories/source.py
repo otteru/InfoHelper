@@ -16,6 +16,9 @@ class SourceRepository(Protocol):
         # ...는 Python의 Ellipsis 객체 - “여기서는 구현하지 않는다.”
         ...
 
+    def list_all(self) -> tuple[SourceResponse, ...]:
+        """등록된 사이트 목록을 반환한다."""
+        ...
 
 @dataclass(frozen=True)
 class SupabaseSourceRepository:
@@ -49,3 +52,11 @@ class SupabaseSourceRepository:
             raise RuntimeError("사이트 저장 데이터가 올바르지 않습니다.")
 
         return SourceResponse.model_validate(row)
+
+    def list_all(self) -> tuple[SourceResponse, ...]:
+        """등록된 사이트 목록을 반환한다."""
+        response = self.client.table("sources").select("*").execute()
+        rows = response.data
+        if not isinstance(rows, list):
+            raise RuntimeError("사이트 목록 결과가 올바르지 않습니다.")
+        return tuple(SourceResponse.model_validate(row) for row in rows)

@@ -29,8 +29,9 @@ def create_repository(
     # client.table("sources")가 query를 반환하도록 설정한다.
     client.table.return_value = query
 
-    # insert() 뒤에도 같은 query를 반환해 메서드 체인을 이어간다.
+    # insert() / select() 뒤에도 같은 query를 반환해 메서드 체인을 이어간다.
     query.insert.return_value = query
+    query.select.return_value = query
 
     # SimpleNamespace는 원하는 속성을 간단하게 가진 객체를 만드는 도구
     query.execute.return_value = SimpleNamespace(data=response_data)
@@ -160,3 +161,62 @@ def test_create_translates_duplicate_url_error() -> None:
 
     with pytest.raises(SourceAlreadyExistsError):
         repository.create(source)
+
+
+def test_list_all_returns_sources() -> None:
+    """사이트 목록 응답을 SourceResponse 튜플로 변환하는지 검증한다."""
+    response_data = [
+        {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "name": "건국대학교",
+            "url": "https://www.konkuk.ac.kr/notice",
+            "created_at": "2026-08-15T00:00:00+09:00",
+        },
+        {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "name": "다른 대학",
+            "url": "https://example.com/notice",
+            "created_at": "2026-08-16T00:00:00+09:00",
+        },
+    ]
+    repository, client, query = create_repository(response_data)
+
+    result = repository.list_all()
+
+    assert len(result) == 2
+    assert result[0].id == UUID("00000000-0000-0000-0000-000000000001")
+    assert result[0].name == "건국대학교"
+    assert result[1].id == UUID("00000000-0000-0000-0000-000000000002")
+    client.table.assert_called_once_with("sources")
+    query.select.assert_called_once_with("*")
+    query.insert.assert_not_called()
+
+
+def test_list_all_returns_empty_tuple() -> None:
+    """사이트가 없으면 빈 튜플을 반환한다."""
+    repository, _, query = create_repository([])
+
+    result = repository.list_all()
+
+    assert result == ()
+    query.select.assert_called_once_with("*")
+
+
+@pytest.mark.parametrize(
+    "response_data",
+    [
+        pytest.param(None, id="none"),
+        pytest.param({}, id="mapping"),
+    ],
+)
+def test_list_all_rejects_invalid_response_data(
+    response_data: object,
+) -> None:
+    """목록 응답이 리스트가 아니면 거부한다."""
+    repository, _, _ = create_repository(response_data)
+
+    with pytest.raises(
+        RuntimeError,
+        match="사이트 목록 결과가 올바르지 않습니다",
+    ):
+        repository.list_all()
