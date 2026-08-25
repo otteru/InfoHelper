@@ -77,26 +77,34 @@
   - 생성 스키마는 `table.board-table tbody tr`과 `td.td-subject` 링크를 사용한다
   - 같은 HTML에서 공지 29개를 추출했고, 제목 칸 링크는 모두 `artclView.do`였다
   - 실험 스크립트는 `test/mvp2/test_generate_schema.py`이며 기본 pytest에서는 skip한다
+- [x] 건국대 규칙을 로컬 DB에 저장
+  - `sources`에 건국대 공지 URL이 있다
+  - `seed_konkuk_rule.py`로 candidate 생성 후 activate 했다
+  - `load_dotenv(".env.local", override=True)`가 원격 `.env` 키를 덮어쓴다
+- [x] Ingestion DB Source 조회
+  - `SourceRepository.list_all` 추가
+  - `load_sources()`가 `sources` + active 규칙을 합쳐 배치 `Source`를 만든다
+  - active 규칙 없는 사이트는 건너뛴다
+- [x] 목록 추출을 CSS 규칙으로 변경
+  - `crawl_source_page()`는 `artclView.do` 필터 대신 `JsonCssExtractionStrategy.extract`를 사용한다
+  - 상대경로 url은 `urljoin`으로 절대경로가 된다
+  - `NoticeTarget.source_id`는 아직 Source 이름 문자열이다
 
 ## 진행 중인 작업
 
 - [ ] 사이트별 크롤링 규칙 설계
-  - DB 모델, Repository, 건국대 `generate_schema` 검증까지 완료
-  - 생성된 규칙을 DB에 저장하는 단계는 아직이다
-  - FastAPI 엔드포인트와 Ingestion 연결은 아직 없다
-  - 현재 `crawl_source_page()`의 `"artclView.do"` 하드코딩은 아직 남아 있음
+  - DB, Repository, 건국대 규칙 저장, Ingestion 목록 추출까지 완료
+  - 규칙 전용 FastAPI 엔드포인트는 아직 없다
+  - `NoticeTarget.source_id`를 UUID로 바꾸는 작업이 남아 있다
 - [ ] 사용자·구독 관리
   - `users`와 `sources`의 다대다 관계를 `subscriptions`로 구성할 예정
   - 사이트별 크롤링 규칙과 DB 기반 Ingestion 연결 이후 진행
 
 ## 다음에 해야 할 작업
 
-1. 검증된 건국대 스키마를 `CrawlRuleDefinition`으로 확인한 뒤 `generated_by=llm` candidate로 저장한다.
-2. 샘플 추출이 맞으면 `activate`한다.
-3. Ingestion의 `load_sources()`를 `data/userURL.json` 대신 `sources`와 active 규칙 조회로 변경한다.
-4. `crawl_source_page()`가 저장된 CSS 스키마를 `JsonCssExtractionStrategy`로 실행하도록 변경한다.
-5. 운영 실패 시 `generate_schema`로 새 candidate를 만들고 교체하는 흐름을 구현한다.
-6. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
+1. `NoticeTarget.source_id`를 Source 이름 대신 UUID로 바꾼다.
+2. 운영 실패 시 `generate_schema`로 새 candidate를 만들고 교체하는 흐름을 구현한다.
+3. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
 
 ## 중기 로드맵
 
@@ -143,11 +151,13 @@ users 1 ── N subscriptions N ── 1 sources
 - `.env`, `.env.local`, Supabase Secret Key, API key, AWS 인증정보를 커밋하지 않는다.
 - 루트 `main.py`는 실제 크롤링·Gemini·Supabase·SES 요청을 실행한다.
 - `test/mvp1/requests_test.py`는 import 시 네트워크 요청을 실행하므로 전체 `pytest`는 피한다.
-- `SourceCrawlRuleRepository`는 FastAPI dependency와 Ingestion에 아직 연결하지 않았다.
+- `SourceCrawlRuleRepository`는 Ingestion `load_sources`에서 쓰인다. 규칙 전용 FastAPI 엔드포인트는 아직 없다.
+- uvicorn `--reload --env-file .env.local`만으로는 자식 프로세스에 `SUPABASE_URL`이 없을 수 있다. 로컬 API는 `.env.local`을 셸에 source한 뒤 실행한다.
+- `seed_konkuk_rule.py`는 로컬 Source UUID가 박혀 있다. 원격 DB에 돌리지 않는다.
 - `activate`는 `validation_status=passed`를 강제하지 않는다. 검증 후 활성화 흐름은 이후 단계에서 넣는다.
 - `version` 번호는 max+1이라 동시 생성 시 unique violation이 날 수 있다. MVP에서는 나중에 처리한다.
 - `update()` payload는 `dict[str, str | None]`이며 Supabase JSON 타입으로 `cast`한다.
-- 현재 Ingestion은 `data/userURL.json`을 읽고 상세 링크를 `"artclView.do"`로 판별한다.
+- 현재 Ingestion은 `sources`와 active 규칙을 읽고 CSS로 목록 URL을 추출한다. `data/userURL.json`은 더 이상 읽지 않는다.
 - 기존 `notice_chunks.source_id`는 문자열이고 신규 `sources.id`는 UUID이므로 연결 전 migration 전략이 필요하다.
 - 테스트 시 Requests 의존성 불일치 경고와 Starlette `TestClient`의 httpx 사용 중단 예정 경고가 남아 있다.
 - 프로젝트 규칙상 `main`/`master` 브랜치에 직접 Push하지 않는다.
@@ -159,7 +169,7 @@ users 1 ── N subscriptions N ── 1 sources
 - `app/api/endpoints/sources.py` - Source 등록 엔드포인트와 Repository 주입
 - `app/api/dependencies.py` - Supabase와 Source Repository dependency
 - `app/schemas/source.py` - Source 요청·응답 스키마
-- `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현
+- `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현. `list_all` 포함
 - `app/exceptions.py` - Source 중복 URL 도메인 오류
 - `integrations/clients.py` - Gemini·Supabase 공통 클라이언트 생성
 - `supabase/migrations/20260814051424_create_sources.sql` - sources 테이블 migration
@@ -171,15 +181,14 @@ users 1 ── N subscriptions N ── 1 sources
 - `test/mvp2/test_generate_schema.py` - 건국대 공지 generate_schema 로컬 실험. `RUN_GENERATE_SCHEMA_TEST=1`일 때만 pytest가 실행한다
 - `test/api/test_sources.py` - Fake Repository를 사용하는 Source API 테스트
 - `test/repositories/test_source.py` - Mock Client를 사용하는 실제 Repository 단위 테스트
-- `ai_graphs/ingestion_graph/models.py` - 현재 배치용 Source 모델
-- `ai_graphs/ingestion_graph/nodes.py` - JSON Source 로딩과 하드코딩된 링크 판별 로직
-- `data/userURL.json` - DB 전환 전 임시 Source 입력
+- `ai_graphs/ingestion_graph/models.py` - 배치용 Source. id와 rule_definition 포함
+- `ai_graphs/ingestion_graph/nodes.py` - DB Source 로딩과 CSS 목록 추출
+- `seed_konkuk_rule.py` - 로컬 건국대 규칙 저장·활성화 스크립트
+- `data/userURL.json` - DB 전환 전 임시 Source 입력. Ingestion은 더 이상 사용하지 않음
 - `data/userInfo.md` - DB 전환 전 임시 사용자·추천 Query 입력
 
 ## 마지막 상태
 
 - 브랜치: `feat/source-crawl-rules`
-- 안전 테스트: `pytest test/schemas test/api test/repositories -q` → `32 passed`, 경고 1개
-- 컴파일: `python -m compileall -q app test/schemas test/api test/repositories` 통과
-- 공백 검사: `git diff --check` 통과
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 검증된 건국대 CSS 스키마를 candidate로 저장하는 작업부터 이어서 진행해줘`
+- 안전 테스트: `pytest test/ingestion_graph/test_nodes.py test/repositories/test_source.py -q` → `14 passed`
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 NoticeTarget.source_id를 UUID로 바꾸는 작업부터 이어서 진행해줘`
