@@ -89,9 +89,18 @@
   - `crawl_source_page()`는 `artclView.do` 필터 대신 `JsonCssExtractionStrategy.extract`를 사용한다
   - 상대경로 url은 `urljoin`으로 절대경로가 된다
   - `NoticeTarget.source_id`는 Source UUID이다
+  - CSS 추출 예외는 해당 Source만 `errors`에 기록하고 다른 Source는 계속 처리한다
 - [x] 배치 source_id를 UUID로 통일
   - `NoticeTarget`과 `Notice`의 `source_id`는 UUID다
   - `notice_chunks.source_id`에는 문자열로 저장한다. 컬럼 타입은 아직 text다
+- [x] `activate()`는 `validation_status=passed`인 규칙만 활성화한다
+  - 이미 active인 규칙은 검증 상태와 관계없이 그대로 반환한다
+  - pending/failed 활성화는 `RuntimeError`다
+- [x] `load_sources()` 단위 테스트
+  - Source + active 규칙 결합, active 없는 Source 제외, 빈 목록 처리
+- [x] 로컬 Supabase `load_sources` → CSS 목록 추출 통합 검증
+  - 건국대 Source 1건과 active 규칙을 읽었다
+  - 공지 상세 URL 30개를 추출했고 오류는 없었다
 
 ## 진행 중인 작업
 
@@ -155,7 +164,7 @@ users 1 ── N subscriptions N ── 1 sources
 - `SourceCrawlRuleRepository`는 Ingestion `load_sources`에서 쓰인다. 규칙 전용 FastAPI 엔드포인트는 아직 없다.
 - uvicorn `--reload --env-file .env.local`만으로는 자식 프로세스에 `SUPABASE_URL`이 없을 수 있다. 로컬 API는 `.env.local`을 셸에 source한 뒤 실행한다.
 - `seed_konkuk_rule.py`는 로컬 Source UUID가 박혀 있다. 원격 DB에 돌리지 않는다.
-- `activate`는 `validation_status=passed`를 강제하지 않는다. 검증 후 활성화 흐름은 이후 단계에서 넣는다.
+- `activate`는 이미 active가 아니면 `validation_status=passed`만 허용한다. 시드 스크립트는 활성화 전에 passed로 바꾼다.
 - `version` 번호는 max+1이라 동시 생성 시 unique violation이 날 수 있다. MVP에서는 나중에 처리한다.
 - `update()` payload는 `dict[str, str | None]`이며 Supabase JSON 타입으로 `cast`한다.
 - 현재 Ingestion은 `sources`와 active 규칙을 읽고 CSS로 목록 URL을 추출한다. `data/userURL.json`은 더 이상 읽지 않는다.
@@ -191,5 +200,6 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/source-crawl-rules`
-- 안전 테스트: `pytest test/ingestion_graph/test_nodes.py test/repositories/test_source.py -q` → `14 passed`
+- 안전 테스트: `pytest test/ingestion_graph/test_nodes.py test/repositories/test_source_crawl_rule.py -q` → `27 passed`
+- 로컬 통합: `load_sources` 1건 → CSS 목록 30 URL, errors 0
 - 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 운영 실패 시 generate_schema로 규칙을 교체하는 작업부터 이어서 진행해줘`
