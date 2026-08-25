@@ -30,7 +30,7 @@ class CrawlFailure:
 class NoticeTarget:
     """상세 페이지 크롤링 대상 공지."""
 
-    source_id: str
+    source_id: UUID
     url: str
 
 
@@ -39,7 +39,7 @@ class NoticeTarget:
 class Notice:
     """임베딩 가능한 형태로 정제된 공지."""
 
-    source_id: str
+    source_id: UUID
     url: str  # 중복 저장을 판별하는 공지의 고유 식별자
     title: str
     content: str

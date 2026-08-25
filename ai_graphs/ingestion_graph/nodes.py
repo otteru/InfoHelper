@@ -147,7 +147,7 @@ def _notice_targets_from_html(
         targets = (
             *targets,
             NoticeTarget(
-                source_id=source.name,
+                source_id=source.id,
                 url=urljoin(source.url, href),
             ),
         )
@@ -272,7 +272,7 @@ def _save_chunk(
             if notice.deadline is not None
             else None
         ),
-        "source_id": notice.source_id,
+        "source_id": str(notice.source_id),
         "status": "open",
         "embedding": embedding,
         },

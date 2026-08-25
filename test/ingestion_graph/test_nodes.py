@@ -108,7 +108,7 @@ def test_목록_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
     assert "notice_targets" in result
     assert result["notice_targets"] == (
         NoticeTarget(
-            source_id="성공 출처",
+            source_id=UUID("00000000-0000-0000-0000-000000000002"),
             url="https://example.com/artclView.do?id=1",
         ),
     )
@@ -137,11 +137,15 @@ def test_상세_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
             {
                 "notice_targets": (
                     NoticeTarget(
-                        source_id="출처",
+                        source_id=UUID(
+                            "00000000-0000-0000-0000-000000000003"
+                        ),
                         url="https://fail.example.com/notice",
                     ),
                     NoticeTarget(
-                        source_id="출처",
+                        source_id=UUID(
+                            "00000000-0000-0000-0000-000000000003"
+                        ),
                         url="https://success.example.com/notice",
                     ),
                 ),
