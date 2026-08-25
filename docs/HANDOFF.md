@@ -88,23 +88,24 @@
 - [x] 목록 추출을 CSS 규칙으로 변경
   - `crawl_source_page()`는 `artclView.do` 필터 대신 `JsonCssExtractionStrategy.extract`를 사용한다
   - 상대경로 url은 `urljoin`으로 절대경로가 된다
-  - `NoticeTarget.source_id`는 아직 Source 이름 문자열이다
+  - `NoticeTarget.source_id`는 Source UUID이다
+- [x] 배치 source_id를 UUID로 통일
+  - `NoticeTarget`과 `Notice`의 `source_id`는 UUID다
+  - `notice_chunks.source_id`에는 문자열로 저장한다. 컬럼 타입은 아직 text다
 
 ## 진행 중인 작업
 
 - [ ] 사이트별 크롤링 규칙 설계
-  - DB, Repository, 건국대 규칙 저장, Ingestion 목록 추출까지 완료
+  - DB, Repository, 건국대 규칙 저장, Ingestion 목록 추출, source_id UUID까지 완료
   - 규칙 전용 FastAPI 엔드포인트는 아직 없다
-  - `NoticeTarget.source_id`를 UUID로 바꾸는 작업이 남아 있다
 - [ ] 사용자·구독 관리
   - `users`와 `sources`의 다대다 관계를 `subscriptions`로 구성할 예정
   - 사이트별 크롤링 규칙과 DB 기반 Ingestion 연결 이후 진행
 
 ## 다음에 해야 할 작업
 
-1. `NoticeTarget.source_id`를 Source 이름 대신 UUID로 바꾼다.
-2. 운영 실패 시 `generate_schema`로 새 candidate를 만들고 교체하는 흐름을 구현한다.
-3. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
+1. 운영 실패 시 `generate_schema`로 새 candidate를 만들고 교체하는 흐름을 구현한다.
+2. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
 
 ## 중기 로드맵
 
@@ -191,4 +192,4 @@ users 1 ── N subscriptions N ── 1 sources
 
 - 브랜치: `feat/source-crawl-rules`
 - 안전 테스트: `pytest test/ingestion_graph/test_nodes.py test/repositories/test_source.py -q` → `14 passed`
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 NoticeTarget.source_id를 UUID로 바꾸는 작업부터 이어서 진행해줘`
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 운영 실패 시 generate_schema로 규칙을 교체하는 작업부터 이어서 진행해줘`
