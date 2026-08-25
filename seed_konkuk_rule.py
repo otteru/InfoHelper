@@ -11,6 +11,7 @@ from app.schemas.crawl_rule import (
     CrawlRuleDefinition,
     GeneratedBy,
     SourceCrawlRuleCreate,
+    ValidationStatus,
 )
 from integrations.clients import create_supabase_client
 
@@ -35,7 +36,7 @@ KONKUK_SCHEMA = {
 
 
 def main() -> None:
-    """건국대 규칙을 candidate로 저장한 뒤 active로 전환한다."""
+    """건국대 규칙을 candidate로 저장하고 검증 후 active로 전환한다."""
     repo = SupabaseSourceCrawlRuleRepository(client=create_supabase_client())
     candidate = repo.create_candidate(
         SourceCrawlRuleCreate(
@@ -46,8 +47,12 @@ def main() -> None:
     )
     print(candidate.id, candidate.status, candidate.version)
 
-    active = repo.activate(candidate.id)
-    print(active.status, active.health_status)
+    validated = repo.update_validation_status(
+        candidate.id,
+        ValidationStatus.PASSED,
+    )
+    active = repo.activate(validated.id)
+    print(active.status, active.health_status, active.validation_status)
 
 
 if __name__ == "__main__":

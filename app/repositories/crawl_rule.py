@@ -129,10 +129,14 @@ class SupabaseSourceCrawlRuleRepository:
         )
 
     def activate(self, rule_id: UUID) -> SourceCrawlRuleResponse:
-        """규칙을 active로 바꾸고, 기존 active 규칙은 retired로 전환한다."""
+        """검증을 통과한 규칙을 active로 바꾸고, 기존 active는 retired로 전환한다."""
         target = self._get_by_id(rule_id)
         if target.status is RuleStatus.ACTIVE:
             return target
+        if target.validation_status is not ValidationStatus.PASSED:
+            raise RuntimeError(
+                "검증을 통과한 규칙만 활성화할 수 있습니다."
+            )
 
         current = self.get_active(target.source_id)
         if current is not None:

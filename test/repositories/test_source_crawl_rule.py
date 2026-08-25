@@ -339,12 +339,30 @@ def test_update_health_status_rejects_inactive_rule() -> None:
     query.update.assert_not_called()
 
 
+@pytest.mark.parametrize("validation_status", ["pending", "failed"])
+def test_activate_rejects_unvalidated_rule(
+    validation_status: str,
+) -> None:
+    """검증을 통과하지 않은 규칙은 활성화하지 않는다."""
+    candidate = saved_row(version=1, validation_status=validation_status)
+    repository, _, query = create_repository([candidate])
+
+    with pytest.raises(
+        RuntimeError,
+        match="검증을 통과한 규칙만 활성화할 수 있습니다",
+    ):
+        repository.activate(RULE_ID)
+
+    query.update.assert_not_called()
+
+
 def test_activate_promotes_candidate_when_no_active_exists() -> None:
     """기존 active가 없으면 candidate를 active로 바꾼다."""
-    candidate = saved_row(version=1)
+    candidate = saved_row(version=1, validation_status="passed")
     activated = saved_row(
         version=1,
         status="active",
+        validation_status="passed",
         health_status="unknown",
     )
     repository, _, query = create_repository(
@@ -367,7 +385,7 @@ def test_activate_promotes_candidate_when_no_active_exists() -> None:
 
 def test_activate_retires_existing_active_rule() -> None:
     """기존 active 규칙을 retired로 바꾼 뒤 새 규칙을 활성화한다."""
-    candidate = saved_row(version=2)
+    candidate = saved_row(version=2, validation_status="passed")
     current_active = saved_row(
         version=1,
         rule_id=OLD_RULE_ID,
@@ -382,6 +400,7 @@ def test_activate_retires_existing_active_rule() -> None:
     activated = saved_row(
         version=2,
         status="active",
+        validation_status="passed",
         health_status="unknown",
     )
     repository, _, query = create_repository(
