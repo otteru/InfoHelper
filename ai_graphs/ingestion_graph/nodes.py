@@ -115,10 +115,16 @@ async def crawl_source_page(state: IngestionState) -> IngestionState:
             errors = (*errors, f"{source.url}: 목록 HTML이 없습니다.")
             continue
 
-        notice_targets = (
-            *notice_targets,
-            *_notice_targets_from_html(source, html),
-)
+        try:
+            extracted = _notice_targets_from_html(source, html)
+        except Exception as error:
+            errors = (
+                *errors,
+                f"{source.url}: {type(error).__name__}: {error}",
+            )
+            continue
+
+        notice_targets = (*notice_targets, *extracted)
 
     return {
         "notice_targets": notice_targets,
