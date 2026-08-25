@@ -1,0 +1,141 @@
+"""건국대 공지 페이지에서 Crawl4AI generate_schema가 CSS 규칙을 만드는지 확인한다."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+from pathlib import Path
+
+import pytest
+from crawl4ai import (
+    AsyncWebCrawler,
+    BrowserConfig,
+    CacheMode,
+    CrawlerRunConfig,
+    LLMConfig,
+)
+from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
+from dotenv import load_dotenv
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.schemas.crawl_rule import CrawlRuleDefinition
+
+load_dotenv(PROJECT_ROOT / ".env")
+
+KONKUK_NOTICE_URL = "https://www.konkuk.ac.kr/bbs/ee/407/artclList.do"
+GEMINI_FLASH_PROVIDER = "gemini/gemini-3.7-flash"
+SCHEMA_QUERY = (
+    "공지 목록의 각 행에서 제목(title)과 상세 페이지 링크(url)를 추출한다."
+)
+SCHEMA_EXAMPLE = json.dumps(
+    [
+        {
+            "title": "2026학년도 2학기 현장실습학기제 안내",
+            "url": "https://www.konkuk.ac.kr/bbs/ee/407/1200817/artclView.do",
+        }
+    ],
+    ensure_ascii=False,
+)
+
+
+def get_gemini_api_token() -> str:
+    """Crawl4AI LLM 호출에 사용할 Gemini API 키를 반환한다."""
+    token = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not token:
+        raise RuntimeError("GOOGLE_API_KEY 또는 GEMINI_API_KEY가 필요합니다.")
+    return token
+
+
+async def fetch_html(url: str) -> str:
+    """Crawl4AI로 페이지 HTML을 가져온다."""
+    browser_config = BrowserConfig(headless=True, verbose=False)
+    crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        result = await crawler.arun(url=url, config=crawler_config)
+
+    if not result.success or not result.html:
+        raise RuntimeError(f"페이지 크롤링 실패: {result.error_message}")
+
+    return result.cleaned_html or result.html
+
+
+def generate_css_schema(html: str) -> dict[str, object]:
+    """HTML에서 Crawl4AI LLM으로 CSS 추출 스키마를 생성한다."""
+    schema = JsonCssExtractionStrategy.generate_schema(
+        html=html,
+        schema_type="CSS",
+        query=SCHEMA_QUERY,
+        target_json_example=SCHEMA_EXAMPLE,
+        llm_config=LLMConfig(
+            provider=GEMINI_FLASH_PROVIDER,
+            api_token=get_gemini_api_token(),
+        ),
+        validate=False,
+    )
+    if not isinstance(schema, dict):
+        raise RuntimeError("generate_schema 결과가 객체가 아닙니다.")
+    return schema
+
+
+def extract_notices(
+    url: str,
+    html: str,
+    schema: dict[str, object],
+) -> list[dict[str, object]]:
+    """생성된 CSS 스키마로 공지 목록을 추출한다."""
+    strategy = JsonCssExtractionStrategy(schema)
+    items = strategy.extract(url, html)
+    return [item for item in items if isinstance(item, dict)]
+
+
+def print_report(
+    schema: dict[str, object],
+    items: list[dict[str, object]],
+) -> None:
+    """생성 스키마와 추출 샘플을 출력한다."""
+    print("\n=== generated schema ===")
+    print(json.dumps(schema, ensure_ascii=False, indent=2))
+    print(f"\n=== extracted {len(items)} items ===")
+    print(json.dumps(items[:5], ensure_ascii=False, indent=2))
+
+
+async def run_konkuk_schema_generation() -> tuple[
+    dict[str, object],
+    list[dict[str, object]],
+]:
+    """건국대 공지 페이지의 CSS 스키마 생성과 샘플 추출을 실행한다."""
+    html = await fetch_html(KONKUK_NOTICE_URL)
+    schema = generate_css_schema(html)
+    items = extract_notices(KONKUK_NOTICE_URL, html, schema)
+    print_report(schema, items)
+    return schema, items
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_GENERATE_SCHEMA_TEST") != "1",
+    reason="네트워크와 LLM을 사용하므로 기본 pytest에서 제외한다.",
+)
+def test_건국대_공지_css_스키마를_생성한다() -> None:
+    """generate_schema가 건국대 공지 title/url 규칙을 만드는지 검증한다."""
+    schema, items = asyncio.run(run_konkuk_schema_generation())
+
+    rule = CrawlRuleDefinition.model_validate(schema)
+    field_names = {field.name for field in rule.fields}
+    assert "title" in field_names
+    assert "url" in field_names
+    assert len(items) >= 1
+    assert items[0].get("title")
+    assert items[0].get("url")
+
+
+if __name__ == "__main__":
+    schema, items = asyncio.run(run_konkuk_schema_generation())
+    CrawlRuleDefinition.model_validate(schema)
+    if not items:
+        raise SystemExit("추출된 공지가 없습니다.")

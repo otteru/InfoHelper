@@ -1,14 +1,19 @@
+from uuid import UUID
 from dataclasses import dataclass
 from datetime import date
 
+from app.schemas.crawl_rule import CrawlRuleDefinition
 
-# userURL.json 또는 이후 sources 테이블에서 읽어 온 크롤링 출처
+
+# sources 테이블에서 읽어 온 크롤링 출처
 @dataclass(frozen=True)
 class Source:
     """공지 목록 페이지를 제공하는 크롤링 출처."""
 
+    id: UUID
     name: str
     url: str
+    rule_definition: CrawlRuleDefinition
 
 
 @dataclass(frozen=True)
@@ -25,7 +30,7 @@ class CrawlFailure:
 class NoticeTarget:
     """상세 페이지 크롤링 대상 공지."""
 
-    source_id: str
+    source_id: UUID
     url: str
 
 
@@ -34,7 +39,7 @@ class NoticeTarget:
 class Notice:
     """임베딩 가능한 형태로 정제된 공지."""
 
-    source_id: str
+    source_id: UUID
     url: str  # 중복 저장을 판별하는 공지의 고유 식별자
     title: str
     content: str
