@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.endpoints.crawl_rules import router as crawl_rules_router
 from app.api.endpoints.sources import router as sources_router
 
 api_router = APIRouter()
@@ -11,3 +12,4 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 api_router.include_router(sources_router)
+api_router.include_router(crawl_rules_router)

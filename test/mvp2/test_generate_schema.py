@@ -33,12 +33,10 @@ SCHEMA_QUERY = (
     "공지 목록의 각 행에서 제목(title)과 상세 페이지 링크(url)를 추출한다."
 )
 SCHEMA_EXAMPLE = json.dumps(
-    [
-        {
-            "title": "2026학년도 2학기 현장실습학기제 안내",
-            "url": "https://www.konkuk.ac.kr/bbs/ee/407/1200817/artclView.do",
-        }
-    ],
+    {
+        "title": "2026학년도 2학기 현장실습학기제 안내",
+        "url": "https://www.konkuk.ac.kr/bbs/ee/407/1200817/artclView.do",
+    },
     ensure_ascii=False,
 )
 

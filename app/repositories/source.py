@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
+from uuid import UUID
 
 from postgrest.exceptions import APIError
 from supabase import Client
@@ -18,6 +19,10 @@ class SourceRepository(Protocol):
 
     def list_all(self) -> tuple[SourceResponse, ...]:
         """등록된 사이트 목록을 반환한다."""
+        ...
+
+    def get_by_id(self, source_id: UUID) -> SourceResponse | None:
+        """id로 Source 한 행을 조회한다. 없으면 None을 반환한다."""
         ...
 
 @dataclass(frozen=True)
@@ -60,3 +65,25 @@ class SupabaseSourceRepository:
         if not isinstance(rows, list):
             raise RuntimeError("사이트 목록 결과가 올바르지 않습니다.")
         return tuple(SourceResponse.model_validate(row) for row in rows)
+
+    def get_by_id(self, source_id: UUID) -> SourceResponse | None:
+        """id로 Source 한 행을 조회한다. 없으면 None을 반환한다."""
+        response = (
+            self.client.table("sources")
+            .select("*")
+            .eq("id", str(source_id))
+            .limit(1)
+            .execute()
+        )
+        rows = response.data
+        if not rows:
+            return None
+
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise RuntimeError("사이트 조회 결과가 올바르지 않습니다.")
+
+        row = rows[0]
+        if not isinstance(row, Mapping):
+            raise RuntimeError("사이트 조회 데이터가 올바르지 않습니다.")
+
+        return SourceResponse.model_validate(row)
