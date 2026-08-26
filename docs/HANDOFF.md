@@ -101,20 +101,43 @@
 - [x] 로컬 Supabase `load_sources` → CSS 목록 추출 통합 검증
   - 건국대 Source 1건과 active 규칙을 읽었다
   - 공지 상세 URL 30개를 추출했고 오류는 없었다
+- [x] 크롤링 규칙 생성 FastAPI 구현
+  - `POST /api/v1/sources/{source_id}/crawl_rules` 엔드포인트와 라우터를 추가했다
+  - `SourceRepository.get_by_id`로 등록된 Source를 조회한다
+  - Source HTML을 가져와 Crawl4AI와 Gemini로 CSS 스키마를 생성한다
+  - `target_json_example`은 단일 객체의 `title`, `url` 필드를 사용한다
+  - Crawl4AI `validate=True`, `max_refinements=3`으로 스키마 보정을 시도한다
+  - 생성된 스키마를 같은 HTML에 적용해 `title`, `url`이 채워진 공지가 있는지 다시 검증한다
+  - candidate 저장 후 검증 성공 시 `passed → active`, 실패 시 `failed`로 전환한다
+  - Source 없음은 `404`, 규칙 검증 실패는 `422`, 외부 크롤링·LLM 실패는 `502`로 응답한다
+- [x] SSRF 1차 URL 검증 구현
+  - `validate_public_url()`로 HTTP(S), 80·443 포트, 인증정보 미포함 URL만 허용한다
+  - IP literal과 DNS의 모든 IPv4·IPv6 결과가 공개 주소인지 확인한다
+  - loopback, private, link-local, metadata, multicast, reserved 주소를 차단한다
+  - Source 등록 시 DB 저장 전에 검사하고 실패하면 `422`를 반환한다
+  - 크롤링 직전 다시 검사하며, 비동기 이벤트 루프를 막지 않도록 `asyncio.to_thread()`를 사용한다
+  - 안전하지 않은 Source는 Repository 저장이나 브라우저 실행까지 도달하지 않는다
 
 ## 진행 중인 작업
 
-- [ ] 사이트별 크롤링 규칙 설계
-  - DB, Repository, 건국대 규칙 저장, Ingestion 목록 추출, source_id UUID까지 완료
-  - 규칙 전용 FastAPI 엔드포인트는 아직 없다
+- [ ] 사이트별 크롤링 규칙 생성 API 마무리
+  - DB, Repository, 생성 API, 스키마 검증, candidate 상태 전환과 활성화까지 구현했다
+  - 단위·API 테스트는 통과했지만 실제 Supabase·Gemini·Crawl4AI를 연결한 로컬 E2E는 아직 실행하지 않았다
+- [ ] SSRF 브라우저 요청 가드
+  - 등록 시점과 최초 크롤링 직전 URL 검증까지 완료했다
+  - Crawl4AI `on_page_context_created`와 Playwright `page.route()`를 이용한 redirect·추가 요청 차단은 다음 세션으로 보류했다
+  - 배치 Ingestion과 추출된 상세 공지 URL에도 같은 검증을 연결해야 한다
 - [ ] 사용자·구독 관리
   - `users`와 `sources`의 다대다 관계를 `subscriptions`로 구성할 예정
-  - 사이트별 크롤링 규칙과 DB 기반 Ingestion 연결 이후 진행
+  - 크롤링 규칙 생성 API와 SSRF 방어를 마무리한 뒤 진행
 
 ## 다음에 해야 할 작업
 
-1. 운영 실패 시 `generate_schema`로 새 candidate를 만들고 교체하는 흐름을 구현한다.
-2. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
+1. Crawl4AI `on_page_context_created` hook에서 Playwright `page.route()`를 등록해 모든 HTTP(S) 요청을 `validate_public_url()`로 검사한다.
+2. 안전하지 않은 최초 요청·redirect·JavaScript 이동·서브리소스 요청은 `route.abort()`하고 차단 기록을 바탕으로 크롤링을 실패 처리한다.
+3. 배치 Ingestion의 Source URL과 추출된 상세 공지 URL에도 같은 요청 가드를 적용한다.
+4. 로컬 Supabase·Gemini·Crawl4AI로 Source 등록 → 규칙 생성 → active 전환 E2E를 검증한다.
+5. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
 
 ## 중기 로드맵
 
@@ -169,6 +192,12 @@ users 1 ── N subscriptions N ── 1 sources
 - `update()` payload는 `dict[str, str | None]`이며 Supabase JSON 타입으로 `cast`한다.
 - 현재 Ingestion은 `sources`와 active 규칙을 읽고 CSS로 목록 URL을 추출한다. `data/userURL.json`은 더 이상 읽지 않는다.
 - 기존 `notice_chunks.source_id`는 문자열이고 신규 `sources.id`는 UUID이므로 연결 전 migration 전략이 필요하다.
+- `validate_public_url()`은 DNS 조회 결과를 검사하지만 DNS 검사와 Chromium 연결 사이의 DNS rebinding 가능성은 남는다. 공개 배포 전 outbound proxy 또는 네트워크 계층 차단도 필요하다.
+- 현재 SSRF 방어는 Source 등록과 크롤링 직전 검사까지만 적용됐다. redirect와 브라우저 서브리소스는 아직 요청 전에 차단하지 않는다.
+- Source 등록 API는 실제 DNS 조회를 수행한다. 테스트에서는 `validate_public_url`을 Mock해 외부 네트워크 요청을 막는다.
+- `fetch_html()`의 URL 검증은 `asyncio.to_thread()`에서 실행한다.
+- 크롤링 규칙 생성 엔드포인트 안의 동기 Supabase Repository 호출은 현재 이벤트 루프에서 실행된다. 트래픽 증가 시 비동기 Client 또는 thread offload를 검토한다.
+- `activate()`는 기존 active를 retire한 뒤 새 규칙을 active로 만드는 두 번의 DB 요청이므로 완전한 트랜잭션은 아니다.
 - 테스트 시 Requests 의존성 불일치 경고와 Starlette `TestClient`의 httpx 사용 중단 예정 경고가 남아 있다.
 - 프로젝트 규칙상 `main`/`master` 브랜치에 직접 Push하지 않는다.
 
@@ -177,11 +206,14 @@ users 1 ── N subscriptions N ── 1 sources
 - `app/main.py` - FastAPI 애플리케이션 진입점
 - `app/api/router.py` - API v1 라우터 조립
 - `app/api/endpoints/sources.py` - Source 등록 엔드포인트와 Repository 주입
-- `app/api/dependencies.py` - Supabase와 Source Repository dependency
+- `app/api/endpoints/crawl_rules.py` - CSS 크롤링 규칙 생성 엔드포인트
+- `app/services/crawl_rule.py` - HTML 수집, 스키마 생성·검증, candidate 상태 전환과 활성화
+- `app/api/dependencies.py` - Supabase, Source와 Crawl Rule Repository dependency
 - `app/schemas/source.py` - Source 요청·응답 스키마
-- `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현. `list_all` 포함
-- `app/exceptions.py` - Source 중복 URL 도메인 오류
+- `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현. `list_all`, `get_by_id` 포함
+- `app/exceptions.py` - Source와 크롤링 규칙 도메인 오류
 - `integrations/clients.py` - Gemini·Supabase 공통 클라이언트 생성
+- `integrations/url_safety.py` - URL 형태·DNS·공개 IP 기반 SSRF 1차 검증
 - `supabase/migrations/20260814051424_create_sources.sql` - sources 테이블 migration
 - `supabase/migrations/20260819000000_create_source_crawl_rules.sql` - 사이트별 버전형 크롤링 규칙 migration
 - `app/schemas/crawl_rule.py` - 크롤링 규칙 상태, CSS 스키마, DB 행 모델
@@ -190,7 +222,10 @@ users 1 ── N subscriptions N ── 1 sources
 - `test/repositories/test_source_crawl_rule.py` - Mock Client를 사용하는 크롤링 규칙 Repository 단위 테스트
 - `test/mvp2/test_generate_schema.py` - 건국대 공지 generate_schema 로컬 실험. `RUN_GENERATE_SCHEMA_TEST=1`일 때만 pytest가 실행한다
 - `test/api/test_sources.py` - Fake Repository를 사용하는 Source API 테스트
+- `test/api/test_crawl_rules.py` - 크롤링 규칙 생성 API 오류 응답 테스트
 - `test/repositories/test_source.py` - Mock Client를 사용하는 실제 Repository 단위 테스트
+- `test/services/test_crawl_rule_service.py` - 스키마 검증·상태 전환·URL 재검증 테스트
+- `test/integrations/test_url_safety.py` - 공개·사설 IP와 DNS URL 정책 테스트
 - `ai_graphs/ingestion_graph/models.py` - 배치용 Source. id와 rule_definition 포함
 - `ai_graphs/ingestion_graph/nodes.py` - DB Source 로딩과 CSS 목록 추출
 - `seed_konkuk_rule.py` - 로컬 건국대 규칙 저장·활성화 스크립트
@@ -199,7 +234,10 @@ users 1 ── N subscriptions N ── 1 sources
 
 ## 마지막 상태
 
-- 브랜치: `feat/source-crawl-rules`
-- 안전 테스트: `pytest test/ingestion_graph/test_nodes.py test/repositories/test_source_crawl_rule.py -q` → `27 passed`
-- 로컬 통합: `load_sources` 1건 → CSS 목록 30 URL, errors 0
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 운영 실패 시 generate_schema로 규칙을 교체하는 작업부터 이어서 진행해줘`
+- 브랜치: `feat/crawl-rule-api`
+- 최근 코드 커밋: `9d1f4ab` (`feat: 크롤링 규칙 생성 API`), `a4cd6ea` (`fix: 외부 URL SSRF 사전 차단`)
+- 작업 트리: 기능·보안·HANDOFF 변경을 3개 커밋으로 정리한 clean 상태
+- 안전 테스트: `conda run -n infohelper pytest test/api test/repositories test/schemas test/services test/integrations test/ingestion_graph -q` → `79 passed, 1 warning`
+- 문법·diff 검사: `python -m compileall`과 `git diff --check` 통과
+- 외부 연동 테스트: 이번 세션에서는 실제 Supabase·Gemini·Crawl4AI 호출을 실행하지 않음
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 Crawl4AI redirect·브라우저 요청 SSRF 가드부터 이어서 진행해줘`
