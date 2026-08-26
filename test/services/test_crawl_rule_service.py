@@ -7,7 +7,7 @@ from uuid import UUID
 
 import pytest
 
-from app.exceptions import CrawlRuleValidationError
+from app.exceptions import CrawlRuleGenerationError, CrawlRuleValidationError
 from app.repositories.crawl_rule import SourceCrawlRuleRepository
 from app.schemas.crawl_rule import (
     CrawlRuleDefinition,
@@ -19,9 +19,11 @@ from app.schemas.crawl_rule import (
 )
 from app.schemas.source import SourceResponse
 from app.services.crawl_rule import (
+    fetch_html,
     generate_candidate,
     validate_css_rule,
 )
+from integrations.url_safety import UnsafeUrlError
 
 SOURCE_ID = UUID("00000000-0000-0000-0000-000000000010")
 RULE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -80,6 +82,24 @@ def make_rule_response(
         validated_at=None,
         last_health_checked_at=None,
     )
+
+
+def test_fetch_html_rejects_unsafe_url_before_browser() -> None:
+    """안전하지 않은 URL은 브라우저를 실행하기 전에 거부한다."""
+    with (
+        patch(
+            "app.services.crawl_rule.validate_public_url",
+            side_effect=UnsafeUrlError("공개 IP가 아닙니다."),
+        ),
+        patch("app.services.crawl_rule.AsyncWebCrawler") as crawler,
+        pytest.raises(
+            CrawlRuleGenerationError,
+            match="안전하지 않은 URL",
+        ),
+    ):
+        asyncio.run(fetch_html("https://127.0.0.1/admin"))
+
+    crawler.assert_not_called()
 
 
 def test_validate_css_rule_accepts_complete_extraction() -> None:

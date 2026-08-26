@@ -22,6 +22,7 @@ from app.schemas.crawl_rule import (
     ValidationStatus,
 )
 from app.schemas.source import SourceResponse
+from integrations.url_safety import UnsafeUrlError, validate_public_url
 
 GEMINI_FLASH_PROVIDER = "gemini/gemini-3.7-flash"
 SCHEMA_QUERY = (
@@ -48,6 +49,13 @@ def _get_gemini_api_token() -> str:
 
 async def fetch_html(url: str) -> str:
     """Crawl4AI로 페이지 HTML을 가져온다."""
+    try:
+        await asyncio.to_thread(validate_public_url, url)
+    except UnsafeUrlError as error:
+        raise CrawlRuleGenerationError(
+            "안전하지 않은 URL은 크롤링할 수 없습니다."
+        ) from error
+
     browser_config = BrowserConfig(headless=True, verbose=False)
     crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
 

@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from datetime import datetime
+from unittest.mock import Mock, patch
 from uuid import UUID
 
 import pytest
@@ -8,7 +9,9 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import get_source_repository
 from app.exceptions import SourceAlreadyExistsError
 from app.main import app
+from app.repositories.source import SourceRepository
 from app.schemas.source import SourceCreate, SourceResponse
+from integrations.url_safety import UnsafeUrlError
 
 
 # 테스트용
@@ -38,7 +41,10 @@ def client() -> Iterator[TestClient]:
     )
 
     try:
-        with TestClient(app) as test_client:
+        with (
+            patch("app.api.endpoints.sources.validate_public_url"),
+            TestClient(app) as test_client,
+        ):
             # yield는 client를 전달한 뒤 테스트가 끝날 때까지 잠시 멈춘다.
             yield test_client
     # 테스트가 끝나면 dependency_overrides 제거
@@ -98,3 +104,27 @@ def test_create_source_returns_409_for_duplicate_url(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "이미 등록된 사이트 URL입니다."
+
+
+def test_create_source_returns_422_without_saving_unsafe_url(
+    client: TestClient,
+) -> None:
+    """안전하지 않은 URL은 Source Repository에 저장하지 않는다."""
+    repository = Mock(spec=SourceRepository)
+    app.dependency_overrides[get_source_repository] = lambda: repository
+
+    with patch(
+        "app.api.endpoints.sources.validate_public_url",
+        side_effect=UnsafeUrlError("공개 IP가 아닙니다."),
+    ):
+        response = client.post(
+            "/api/v1/sources",
+            json={
+                "name": "내부 서비스",
+                "url": "https://127.0.0.1/admin",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "공개 웹사이트 URL만 등록할 수 있습니다."
+    repository.create.assert_not_called()
