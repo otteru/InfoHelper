@@ -17,11 +17,7 @@ concurrency:
 jobs:
   deploy:
     name: Pulumi Up
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' &&
-      startsWith(github.ref, 'refs/heads/') &&
-      github.ref != 'refs/heads/main')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: dev
@@ -34,6 +30,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Supabase CLI 설정
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Supabase migration 적용
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_ID"
+          supabase db push --linked --dry-run
+          supabase db push --linked
 
       - name: Pulumi 의존성 설치
         working-directory: infra

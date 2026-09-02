@@ -165,6 +165,18 @@ pulumi preview
 pulumi up
 ```
 
+`main` 브랜치 배포 워크플로는 ECS 배포 전에 원격 Supabase migration을 적용합니다.
+GitHub 저장소에 아래 Actions Secret을 등록해야 합니다.
+
+```text
+SUPABASE_ACCESS_TOKEN
+SUPABASE_DB_PASSWORD
+SUPABASE_PROJECT_ID
+```
+
+각 값은 Supabase 프로젝트의 Personal Access Token, Database Password,
+Project Reference를 사용합니다. 값은 저장소 파일이나 Pulumi 설정에 넣지 않습니다.
+
 ## 테스트
 
 외부 네트워크 요청이 없는 테스트는 다음과 같이 실행합니다.
