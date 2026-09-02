@@ -32,6 +32,8 @@ def create_repository(
     # insert() / select() 뒤에도 같은 query를 반환해 메서드 체인을 이어간다.
     query.insert.return_value = query
     query.select.return_value = query
+    query.eq.return_value = query
+    query.limit.return_value = query
 
     # SimpleNamespace는 원하는 속성을 간단하게 가진 객체를 만드는 도구
     query.execute.return_value = SimpleNamespace(data=response_data)
@@ -220,3 +222,49 @@ def test_list_all_rejects_invalid_response_data(
         match="사이트 목록 결과가 올바르지 않습니다",
     ):
         repository.list_all()
+
+
+def test_get_by_id_returns_source() -> None:
+    """id로 조회한 행을 SourceResponse로 변환하는지 검증한다."""
+    source_id = UUID("00000000-0000-0000-0000-000000000001")
+    response_data = [
+        {
+            "id": str(source_id),
+            "name": "건국대학교",
+            "url": "https://www.konkuk.ac.kr/notice",
+            "created_at": "2026-08-15T00:00:00+09:00",
+        }
+    ]
+    repository, client, query = create_repository(response_data)
+
+    result = repository.get_by_id(source_id)
+
+    assert result is not None
+    assert result.id == source_id
+    assert result.name == "건국대학교"
+    client.table.assert_called_once_with("sources")
+    query.select.assert_called_once_with("*")
+    query.eq.assert_called_once_with("id", str(source_id))
+    query.limit.assert_called_once_with(1)
+    query.insert.assert_not_called()
+
+
+def test_get_by_id_returns_none_when_missing() -> None:
+    """해당 id의 Source가 없으면 None을 반환한다."""
+    repository, _, query = create_repository([])
+
+    result = repository.get_by_id(UUID("00000000-0000-0000-0000-000000000001"))
+
+    assert result is None
+    query.select.assert_called_once_with("*")
+
+
+def test_get_by_id_rejects_invalid_row() -> None:
+    """조회 행이 객체 형식이 아니면 거부한다."""
+    repository, _, _ = create_repository(["잘못된 데이터"])
+
+    with pytest.raises(
+        RuntimeError,
+        match="사이트 조회 데이터가 올바르지 않습니다",
+    ):
+        repository.get_by_id(UUID("00000000-0000-0000-0000-000000000001"))

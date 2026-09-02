@@ -24,21 +24,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.schemas.crawl_rule import CrawlRuleDefinition
+from app.services.crawl_rule import (
+    DETAIL_SAMPLE_COUNT,
+    MINIMUM_DETAIL_SAMPLE_SUCCESSES,
+    NoticeRuleSample,
+    fetch_html as fetch_service_html,
+    generate_css_schema as generate_list_css_schema,
+    generate_detail_css_schema,
+    validate_css_rule,
+    validate_detail_css_rule,
+)
 
+load_dotenv(PROJECT_ROOT / ".env.local")
 load_dotenv(PROJECT_ROOT / ".env")
 
 KONKUK_NOTICE_URL = "https://www.konkuk.ac.kr/bbs/ee/407/artclList.do"
-GEMINI_FLASH_PROVIDER = "gemini/gemini-3.7-flash"
+GEMINI_FLASH_PROVIDER = "gemini/gemini-2.5-flash"
 SCHEMA_QUERY = (
     "공지 목록의 각 행에서 제목(title)과 상세 페이지 링크(url)를 추출한다."
 )
 SCHEMA_EXAMPLE = json.dumps(
-    [
-        {
-            "title": "2026학년도 2학기 현장실습학기제 안내",
-            "url": "https://www.konkuk.ac.kr/bbs/ee/407/1200817/artclView.do",
-        }
-    ],
+    {
+        "title": "2026학년도 2학기 현장실습학기제 안내",
+        "url": "https://www.konkuk.ac.kr/bbs/ee/407/1200817/artclView.do",
+    },
     ensure_ascii=False,
 )
 
@@ -117,6 +126,59 @@ async def run_konkuk_schema_generation() -> tuple[
     return schema, items
 
 
+async def run_konkuk_detail_rule_e2e() -> tuple[
+    CrawlRuleDefinition,
+    CrawlRuleDefinition,
+    tuple[NoticeRuleSample, ...],
+    int,
+]:
+    """건국대 실제 페이지에서 상세 규칙 생성과 추출을 검증한다."""
+    list_html = await fetch_service_html(KONKUK_NOTICE_URL)
+    list_rule = await asyncio.to_thread(
+        generate_list_css_schema,
+        list_html,
+    )
+    samples = validate_css_rule(
+        KONKUK_NOTICE_URL,
+        list_html,
+        list_rule,
+    )[:DETAIL_SAMPLE_COUNT]
+    detail_pages: tuple[tuple[NoticeRuleSample, str], ...] = ()
+    for sample in samples:
+        detail_pages = (
+            *detail_pages,
+            (sample, await fetch_service_html(sample.url)),
+        )
+    if not detail_pages:
+        raise RuntimeError("상세 규칙을 생성할 공지 샘플이 없습니다.")
+
+    detail_rule = await asyncio.to_thread(
+        generate_detail_css_schema,
+        detail_pages[0][1],
+    )
+    successful_extractions = 0
+    for sample, detail_html in detail_pages:
+        try:
+            validate_detail_css_rule(
+                sample.url,
+                detail_html,
+                detail_rule,
+                sample.title,
+            )
+        except Exception as error:
+            print(f"상세 추출 실패: {sample.url} ({error})")
+            continue
+        successful_extractions += 1
+
+    print("\n=== detail schema ===")
+    print(json.dumps(detail_rule.model_dump(by_alias=True), ensure_ascii=False))
+    print(
+        "상세 추출 성공: "
+        f"{successful_extractions}/{len(detail_pages)}"
+    )
+    return list_rule, detail_rule, samples, successful_extractions
+
+
 @pytest.mark.skipif(
     os.environ.get("RUN_GENERATE_SCHEMA_TEST") != "1",
     reason="네트워크와 LLM을 사용하므로 기본 pytest에서 제외한다.",
@@ -132,6 +194,27 @@ def test_건국대_공지_css_스키마를_생성한다() -> None:
     assert len(items) >= 1
     assert items[0].get("title")
     assert items[0].get("url")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_DETAIL_SCHEMA_E2E") != "1",
+    reason="네트워크와 LLM을 사용하므로 기본 pytest에서 제외한다.",
+)
+def test_건국대_상세_css_규칙을_생성하고_추출한다() -> None:
+    """실제 상세 공지에서 생성한 CSS 규칙의 추출 성공률을 검증한다."""
+    list_rule, detail_rule, samples, successful_extractions = asyncio.run(
+        run_konkuk_detail_rule_e2e()
+    )
+
+    assert {field.name for field in list_rule.fields} >= {"title", "url"}
+    assert {field.name for field in detail_rule.fields} >= {
+        "title",
+        "content",
+    }
+    assert successful_extractions >= min(
+        MINIMUM_DETAIL_SAMPLE_SUCCESSES,
+        len(samples),
+    )
 
 
 if __name__ == "__main__":

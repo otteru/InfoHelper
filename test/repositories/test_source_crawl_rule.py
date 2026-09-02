@@ -43,6 +43,23 @@ RULE_DEFINITION = {
     ],
 }
 
+DETAIL_RULE_DEFINITION = {
+    "name": "공지 상세",
+    "baseSelector": "article",
+    "fields": [
+        {
+            "name": "title",
+            "selector": "h1",
+            "type": "text",
+        },
+        {
+            "name": "content",
+            "selector": ".content",
+            "type": "text",
+        },
+    ],
+}
+
 
 def make_rule() -> SourceCrawlRuleCreate:
     """테스트용 candidate 생성 요청을 만든다."""
@@ -62,6 +79,7 @@ def saved_row(
     health_status: str | None = None,
     validated_at: str | None = None,
     last_health_checked_at: str | None = None,
+    detail_rule_definition: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Supabase가 반환한다고 가정한 규칙 행이다."""
     return {
@@ -73,6 +91,7 @@ def saved_row(
         "validation_status": validation_status,
         "health_status": health_status,
         "rule_definition": RULE_DEFINITION,
+        "detail_rule_definition": detail_rule_definition,
         "generated_by": "manual",
         "created_at": CREATED_AT,
         "validated_at": validated_at,
@@ -109,11 +128,13 @@ def expected_insert_payload(version: int) -> dict[str, object]:
     return {
         "source_id": str(rule.source_id),
         "version": version,
+        "rule_schema_version": 1,
         "rule_definition": rule.rule_definition.model_dump(
             mode="json",
             by_alias=True,
             exclude_none=True,
         ),
+        "detail_rule_definition": None,
         "generated_by": rule.generated_by.value,
     }
 
@@ -167,6 +188,46 @@ def test_create_candidate_increments_existing_version() -> None:
 
     assert result.version == 2
     query.insert.assert_called_once_with(expected_insert_payload(version=2))
+
+
+def test_create_candidate_saves_detail_rule_as_schema_version_two() -> None:
+    """상세 규칙이 있으면 schema version 2와 함께 저장한다."""
+    rule = SourceCrawlRuleCreate(
+        source_id=SOURCE_ID,
+        rule_definition=CrawlRuleDefinition.model_validate(RULE_DEFINITION),
+        detail_rule_definition=CrawlRuleDefinition.model_validate(
+            DETAIL_RULE_DEFINITION
+        ),
+        generated_by=GeneratedBy.LLM,
+    )
+    repository, _, query = create_repository(
+        [{"version": 1}],
+        [
+            saved_row(
+                version=2,
+                detail_rule_definition=DETAIL_RULE_DEFINITION,
+            )
+            | {
+                "rule_schema_version": 2,
+                "generated_by": "llm",
+            }
+        ],
+    )
+
+    result = repository.create_candidate(rule)
+
+    assert result.rule_schema_version == 2
+    assert result.detail_rule_definition is not None
+    query.insert.assert_called_once_with(
+        {
+            "source_id": str(SOURCE_ID),
+            "version": 2,
+            "rule_schema_version": 2,
+            "rule_definition": RULE_DEFINITION,
+            "detail_rule_definition": DETAIL_RULE_DEFINITION,
+            "generated_by": "llm",
+        }
+    )
 
 
 @pytest.mark.parametrize(
@@ -440,4 +501,3 @@ def test_activate_returns_existing_active_rule() -> None:
     assert result.status is RuleStatus.ACTIVE
     assert result.health_status is HealthStatus.HEALTHY
     query.update.assert_not_called()
-

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import urljoin
@@ -19,6 +20,7 @@ from ai_graphs.ingestion_graph.state import IngestionState
 from ai_graphs.shared.context import GraphContext
 from app.repositories.source import SupabaseSourceRepository
 from app.repositories.crawl_rule import SupabaseSourceCrawlRuleRepository
+from integrations.url_safety import UnsafeUrlError, validate_public_url
 
 # Ingestion Graph workflow
 # 1. sources 테이블과 active 크롤링 규칙을 불러온다.
@@ -47,7 +49,12 @@ def load_sources(
                 id=row.id,
                 name=row.name,
                 url=str(row.url),
-                rule_definition=rule.rule_definition
+                rule_definition=rule.rule_definition,
+                detail_rule_definition=getattr(
+                    rule,
+                    "detail_rule_definition",
+                    None,
+                ),
             )
         )
 
@@ -60,29 +67,105 @@ async def _crawl_throgh_crawl4ai(
     if not urls:
         return []
 
+    result_slots: list[Any | CrawlFailure | None] = [None] * len(urls)
+    safe_urls: list[str] = []
+    safe_indices: list[int] = []
+    for index, url in enumerate(urls):
+        try:
+            await asyncio.to_thread(validate_public_url, url)
+        except UnsafeUrlError as error:
+            result_slots[index] = CrawlFailure(
+                url=url,
+                message=f"안전하지 않은 URL: {error}",
+            )
+            continue
+
+        safe_urls.append(url)
+        safe_indices.append(index)
+
+    if not safe_urls:
+        return [
+            result
+            for result in result_slots
+            if result is not None
+        ]
+
     browser_config = BrowserConfig(headless=True, verbose=True)
     crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
 
     try:
         async with AsyncWebCrawler(config=browser_config) as crawler:
             results = await crawler.arun_many(
-                urls=urls,
+                urls=safe_urls,
                 config=crawler_config,
             )
     except Exception as error:
         message = f"{type(error).__name__}: {error}"
+        for index, url in zip(safe_indices, safe_urls, strict=True):
+            result_slots[index] = CrawlFailure(url=url, message=message)
+    else:
+        # stream으로 올 경우 비동기적으로 꺼내서 리스트로 만든다.
+        if isinstance(results, AsyncIterator):
+            crawled_results = [result async for result in results]
+        else:
+            crawled_results = list(results)
 
-        return [
-            CrawlFailure(url=url, message=message)
-            for url in urls
-        ]
+        aligned_results = _align_crawl_results(safe_urls, crawled_results)
+        for index, result in zip(
+            safe_indices,
+            aligned_results,
+            strict=True,
+        ):
+            result_slots[index] = result
 
-    # stream으로 올 경우 비동기적으로 꺼내서 최종적으로 리스트로 만드는 문법
-    # stream = False의 경우에는 이 조건문 통과
-    if isinstance(results, AsyncIterator):
-        return [result async for result in results]
+    return [
+        result
+        if result is not None
+        else CrawlFailure(
+            url=urls[index],
+            message="크롤링 결과를 만들지 못했습니다.",
+        )
+        for index, result in enumerate(result_slots)
+    ]
 
-    return list(results)
+
+def _align_crawl_results(
+    requested_urls: list[str],
+    crawled_results: list[Any],
+) -> list[Any | CrawlFailure]:
+    """Crawl4AI 결과를 결과 URL 기준으로 요청 순서에 맞춘다."""
+    remaining_results: tuple[tuple[int, Any], ...] = tuple(
+        enumerate(crawled_results)
+    )
+    aligned_results: list[Any | CrawlFailure] = []
+
+    for url in requested_urls:
+        matching_result = next(
+            (
+                (index, result)
+                for index, result in remaining_results
+                if getattr(result, "url", None) == url
+            ),
+            None,
+        )
+        if matching_result is None:
+            aligned_results.append(
+                CrawlFailure(
+                    url=url,
+                    message="요청 URL과 일치하는 Crawl4AI 결과가 없습니다.",
+                )
+            )
+            continue
+
+        matched_index, result = matching_result
+        aligned_results.append(result)
+        remaining_results = tuple(
+            (index, remaining_result)
+            for index, remaining_result in remaining_results
+            if index != matched_index
+        )
+
+    return aligned_results
 
 async def crawl_source_page(state: IngestionState) -> IngestionState:
     """공지 목록 페이지에서 상세 공지 URL을 추출한다."""
@@ -144,19 +227,33 @@ def _notice_targets_from_html(
     items = JsonCssExtractionStrategy(schema).extract(source.url, html)
 
     targets: tuple[NoticeTarget, ...] = ()
+    seen_urls: frozenset[str] = frozenset()
     for item in items:
         if not isinstance(item, dict):
             continue
         href = item.get("url")
         if not isinstance(href, str) or not href:
             continue
+        extracted_title = item.get("title")
+        title = (
+            extracted_title.strip()
+            if isinstance(extracted_title, str) and extracted_title.strip()
+            else None
+        )
+        url = urljoin(source.url, href)
+        if url in seen_urls:
+            continue
+
         targets = (
             *targets,
             NoticeTarget(
                 source_id=source.id,
-                url=urljoin(source.url, href),
+                url=url,
+                title=title,
+                detail_rule_definition=source.detail_rule_definition,
             ),
         )
+        seen_urls = frozenset((*seen_urls, url))
     return targets
 
 
@@ -169,6 +266,9 @@ def _create_notice(
         raise ValueError(
             f"공지 크롤링에 실패했습니다: {result.error_message}"
         )
+
+    if target.detail_rule_definition is not None:
+        return _create_notice_with_detail_rule(target, result)
 
     if result.markdown is None:
         raise ValueError("공지 Markdown 결과가 없습니다.")
@@ -196,6 +296,54 @@ def _create_notice(
         deadline=None,
     )
 
+
+def _create_notice_with_detail_rule(
+    target: NoticeTarget,
+    result: Any,
+) -> Notice:
+    """상세 CSS 규칙으로 공지 제목과 본문을 추출한다."""
+    html = result.cleaned_html or result.html
+    if not html:
+        raise ValueError("공지 상세 HTML이 없습니다.")
+
+    rule_definition = target.detail_rule_definition
+    if rule_definition is None:
+        raise ValueError("공지 상세 크롤링 규칙이 없습니다.")
+
+    schema = rule_definition.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+    )
+    try:
+        items = JsonCssExtractionStrategy(schema).extract(target.url, html)
+    except Exception as error:
+        raise ValueError(f"공지 상세 CSS 규칙 적용 실패: {error}") from error
+
+    if not isinstance(items, list):
+        items = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        extracted_title = item.get("title")
+        content = item.get("content")
+        title = (
+            extracted_title.strip()
+            if isinstance(extracted_title, str) and extracted_title.strip()
+            else (target.title or "").strip()
+        )
+        if title and isinstance(content, str) and content.strip():
+            return Notice(
+                source_id=target.source_id,
+                url=target.url,
+                title=title,
+                content=content.strip(),
+                deadline=None,
+            )
+
+    raise ValueError("공지 상세 CSS 규칙으로 제목과 본문을 추출하지 못했습니다.")
+
 async def crawl_notice_pages(state: IngestionState) -> IngestionState:
     """상세 공지를 크롤링하고 성공한 공지만 반환한다."""
     notice_targets = state.get("notice_targets")
@@ -209,6 +357,7 @@ async def crawl_notice_pages(state: IngestionState) -> IngestionState:
 
     notices: tuple[Notice, ...] = ()
     errors = state.get("errors", ())
+    invalid_notice_ids = state.get("invalid_notice_ids", ())
 
     for target, result in zip(notice_targets, results, strict=True):
         if isinstance(result, CrawlFailure):
@@ -224,6 +373,7 @@ async def crawl_notice_pages(state: IngestionState) -> IngestionState:
             notice = _create_notice(target, result)
         except ValueError as error:
             errors = (*errors, f"{target.url}: {error}")
+            invalid_notice_ids = (*invalid_notice_ids, target.url)
             continue
 
         notices = (*notices, notice)
@@ -231,6 +381,7 @@ async def crawl_notice_pages(state: IngestionState) -> IngestionState:
     return {
         "notices": notices,
         "errors": errors,
+        "invalid_notice_ids": invalid_notice_ids,
     }
 
 def _split_text(text:str, chunk_size: int = 1000) -> list[str] :
@@ -301,6 +452,20 @@ def _delete_stale_chunks(
         "chunk_index", chunk_count,
     ).execute()
 
+
+def _delete_invalid_notice_chunks(
+    supabase: Client,
+    notice_ids: tuple[str, ...],
+) -> None:
+    """상세 추출에 실패한 공지의 기존 청크를 삭제한다."""
+    for notice_id in dict.fromkeys(notice_ids):
+        (
+            supabase.table("notice_chunks")
+            .delete()
+            .eq("notice_id", notice_id)
+            .execute()
+        )
+
 def upsert_to_vectorDB(
     state: IngestionState,
     runtime: Runtime[GraphContext]
@@ -313,6 +478,9 @@ def upsert_to_vectorDB(
 
     gemini_client = runtime.context.gemini_client
     supabase = runtime.context.supabase_client
+    invalid_notice_ids = state.get("invalid_notice_ids", ())
+
+    _delete_invalid_notice_chunks(supabase, invalid_notice_ids)
 
     saved_count = 0
 

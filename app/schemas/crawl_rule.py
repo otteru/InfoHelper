@@ -84,6 +84,7 @@ class SourceCrawlRuleCreate(BaseModel):
 
     source_id: UUID
     rule_definition: CrawlRuleDefinition
+    detail_rule_definition: CrawlRuleDefinition | None = None
     generated_by: GeneratedBy
 
 
@@ -102,6 +103,7 @@ class SourceCrawlRuleResponse(BaseModel):
     created_at: datetime
     validated_at: datetime | None
     last_health_checked_at: datetime | None
+    detail_rule_definition: CrawlRuleDefinition | None = None
 
     @model_validator(mode="after")
     def validate_health_status(self) -> "SourceCrawlRuleResponse":

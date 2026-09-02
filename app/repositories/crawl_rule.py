@@ -53,10 +53,22 @@ class SupabaseSourceCrawlRuleRepository:
         payload = {
             "source_id": str(rule.source_id),
             "version": self._next_version(rule.source_id),
+            "rule_schema_version": (
+                2 if rule.detail_rule_definition is not None else 1
+            ),
             "rule_definition": rule.rule_definition.model_dump(
                 mode="json",
                 by_alias=True,
                 exclude_none=True,
+            ),
+            "detail_rule_definition": (
+                rule.detail_rule_definition.model_dump(
+                    mode="json",
+                    by_alias=True,
+                    exclude_none=True,
+                )
+                if rule.detail_rule_definition is not None
+                else None
             ),
             "generated_by": rule.generated_by.value,
         }
