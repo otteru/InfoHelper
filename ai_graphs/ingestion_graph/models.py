@@ -14,6 +14,7 @@ class Source:
     name: str
     url: str
     rule_definition: CrawlRuleDefinition
+    detail_rule_definition: CrawlRuleDefinition | None = None
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class NoticeTarget:
 
     source_id: UUID
     url: str
+    title: str | None = None
+    detail_rule_definition: CrawlRuleDefinition | None = None
 
 
 # 상세 페이지를 크롤링·정제한 뒤 임베딩과 저장에 사용하는 공지 데이터

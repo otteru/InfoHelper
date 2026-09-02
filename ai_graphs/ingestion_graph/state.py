@@ -8,3 +8,4 @@ class IngestionState(TypedDict):
     notices: NotRequired[tuple[Notice, ...]]
     saved_count: NotRequired[int]
     errors: NotRequired[tuple[str, ...]]
+    invalid_notice_ids: NotRequired[tuple[str, ...]]

@@ -117,38 +117,69 @@
   - Source 등록 시 DB 저장 전에 검사하고 실패하면 `422`를 반환한다
   - 크롤링 직전 다시 검사하며, 비동기 이벤트 루프를 막지 않도록 `asyncio.to_thread()`를 사용한다
   - 안전하지 않은 Source는 Repository 저장이나 브라우저 실행까지 도달하지 않는다
+- [x] 포트폴리오 관점의 프로젝트 진행 방향 재정립
+  - 기능 나열보다 문제 정의 → Baseline → 평가 → 실패 분석 → 개선 결과를 남기는 방향으로 전환한다
+  - 현재 구현은 다중 사이트를 지원할 수 있는 구조지만 실제 통합 검증은 건국대 한 곳뿐임을 확인했다
+  - 핵심 딥다이브는 다중 사이트 수집 품질 검증 후 RAG 추천 품질 고도화로 정했다
+  - LangGraph 제거는 목표로 삼지 않고 Plain Python과 복잡도·테스트·디버깅·오버헤드를 비교한 뒤 결정한다
+  - 사용자 DB, Chat, 웹 UI는 폐기하지 않고 RAG 개선 가설을 검증하는 순서에 맞춰 이후 구현한다
+- [x] 상세 공지 제목·본문 CSS Rule 구현
+  - `source_crawl_rules.detail_rule_definition` nullable JSONB migration을 추가하고 로컬 DB에 적용했다.
+  - 상세 Rule이 있는 candidate는 `rule_schema_version=2`로 저장하며, 기존 목록 Rule만 있는 v1·v2 행은 legacy fallback을 유지한다.
+  - 규칙 생성 API는 목록 Rule로 고유한 상세 공지 최대 3개를 고르고, 첫 상세 페이지로 title/content Rule을 생성한다.
+  - 이미지·첨부 중심 공지가 있어 3개 모두 본문을 요구하지 않고, 1~2개 샘플은 전부·3개 샘플은 최소 2개 통과 시 활성화하도록 구현했다.
+  - Ingestion은 상세 Rule이 있으면 실제 title/content만 저장하고, 상세 추출 실패 공지의 기존 chunk를 삭제해 오염된 과거 데이터가 RAG에 남지 않게 했다.
+  - 목록에서 추출한 title은 상세 title이 비었을 때 fallback으로 사용한다.
+  - Gemini 모델은 Crawl4AI 0.9.2 호환을 위해 `gemini/gemini-2.5-flash`로 변경했다.
+- [x] 상세 Rule 로컬 E2E 검증
+  - migration 적용과 `supabase db lint --local`이 통과했다.
+  - 건국대 Source `f25944ce-c864-497b-9c74-df5bdaff229d`에 v4 규칙이 `active/passed`로 전환됐다.
+  - v3은 상세 샘플 한 건의 빈 텍스트 본문 때문에 `failed` candidate로 보존됐다.
+  - v4 배치에서 16개 chunk를 실제 상세 title/content로 저장하고, 본문을 추출하지 못한 8개 공지는 오류 격리·기존 chunk 삭제를 확인했다.
+  - 기존 raw Markdown으로 저장된 `title = 건국대학교 -` chunk 9개는 로컬 DB에서 삭제했다. 원본 공지에서 재수집 가능하다.
+- [x] 상세 공지 URL-본문 정합성 검증
+  - Crawl4AI `arun_many()`의 반환 순서가 요청 순서와 다를 수 있어, 결과의 `url`로 원래 요청 순서에 다시 정렬하도록 수정했다.
+  - 결과를 역순으로 반환하는 단위 테스트와 실제 건국대 E2E로 제목·본문·URL이 같은 공지를 가리키는지 검증했다.
+  - Energy Summer Academy 공지는 올바른 URL `1200589`로 저장·SES 발송됐고, 잘못 연결됐던 `1202619` chunk는 삭제됐다.
 
 ## 진행 중인 작업
 
-- [ ] 사이트별 크롤링 규칙 생성 API 마무리
-  - DB, Repository, 생성 API, 스키마 검증, candidate 상태 전환과 활성화까지 구현했다
-  - 단위·API 테스트는 통과했지만 실제 Supabase·Gemini·Crawl4AI를 연결한 로컬 E2E는 아직 실행하지 않았다
+- [ ] 수집 데이터 품질 후속 정리
+  - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
+  - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
 - [ ] SSRF 브라우저 요청 가드
-  - 등록 시점과 최초 크롤링 직전 URL 검증까지 완료했다
+  - 등록 시점과 배치 목록·상세 URL의 브라우저 실행 직전 URL 검증까지 완료했다
   - Crawl4AI `on_page_context_created`와 Playwright `page.route()`를 이용한 redirect·추가 요청 차단은 다음 세션으로 보류했다
-  - 배치 Ingestion과 추출된 상세 공지 URL에도 같은 검증을 연결해야 한다
 - [ ] 사용자·구독 관리
-  - `users`와 `sources`의 다대다 관계를 `subscriptions`로 구성할 예정
-  - 크롤링 규칙 생성 API와 SSRF 방어를 마무리한 뒤 진행
+  - 당장 구현하지 않고 수집·RAG 딥다이브 이후 진행한다
+  - `users`, `subscriptions`, `user_preferences`, `recommendation_feedback`를 최소 범위로 구성할 예정이다
+- [ ] RAG 딥다이브 준비
+  - 현재 1,000자 고정 청킹, Dense Search, 유사도 0.65, 자체 점수 공식을 Baseline으로 고정한다
+  - 실제 공지와 사용자 프로필에 relevance 정답을 붙인 평가 데이터셋은 아직 없다
+  - Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간을 기준으로 개선안을 비교할 예정이다
 
 ## 다음에 해야 할 작업
 
-1. Crawl4AI `on_page_context_created` hook에서 Playwright `page.route()`를 등록해 모든 HTTP(S) 요청을 `validate_public_url()`로 검사한다.
-2. 안전하지 않은 최초 요청·redirect·JavaScript 이동·서브리소스 요청은 `route.abort()`하고 차단 기록을 바탕으로 크롤링을 실패 처리한다.
-3. 배치 Ingestion의 Source URL과 추출된 상세 공지 URL에도 같은 요청 가드를 적용한다.
-4. 로컬 Supabase·Gemini·Crawl4AI로 Source 등록 → 규칙 생성 → active 전환 E2E를 검증한다.
-5. 이후 사용자·구독 관리와 사용자별 추천·발송으로 진행한다.
+1. 이미지·첨부 중심 공지는 텍스트 RAG 대상에서 제외할지, OCR·첨부 텍스트 추출을 별도 기능으로 둘지 결정한다. 현재는 제외가 구현된 동작이다.
+2. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
+3. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
+4. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
+5. 대학 공지 사이트 10~20개로 규칙 생성 성공률, URL 추출 정확도, 비용, 지연시간과 실패 원인을 측정한다.
+6. 이후 사용자 DB·추천 피드백, Chat 프로필, 최소 웹 UI 순으로 진행한다.
 
 ## 중기 로드맵
 
 ```text
-Source 생성 완성
-→ 사이트별 크롤링 규칙
-→ Ingestion의 DB 기반 Source 조회
-→ 사용자 관리
-→ 사용자-Source 구독 관계
-→ 사용자별 추천·이메일 발송
-→ 로컬 E2E와 운영 배포
+현재 E2E 완성
+→ 다중 사이트 수집 품질 검증·개선
+→ RAG 평가 데이터셋·Baseline
+→ RAG 저장·검색 고도화
+→ 백엔드·DB 안정성 검증
+→ LangGraph와 Plain Python 비교
+→ 사용자 DB·추천 피드백
+→ Chat 프로필 효과 검증
+→ 최소 웹 UI 배포
+→ 포트폴리오·블로그 정리
 ```
 
 관계 모델은 다음을 기준으로 한다.
@@ -194,6 +225,16 @@ users 1 ── N subscriptions N ── 1 sources
 - 기존 `notice_chunks.source_id`는 문자열이고 신규 `sources.id`는 UUID이므로 연결 전 migration 전략이 필요하다.
 - `validate_public_url()`은 DNS 조회 결과를 검사하지만 DNS 검사와 Chromium 연결 사이의 DNS rebinding 가능성은 남는다. 공개 배포 전 outbound proxy 또는 네트워크 계층 차단도 필요하다.
 - 현재 SSRF 방어는 Source 등록과 크롤링 직전 검사까지만 적용됐다. redirect와 브라우저 서브리소스는 아직 요청 전에 차단하지 않는다.
+- `detail_rule_definition`이 없는 legacy active 규칙은 metadata 제목과 전체 Markdown을 계속 사용한다. 새 규칙을 생성하면 schema version 2와 상세 Rule을 갖는다.
+- 현재 건국대 v4 상세 Rule은 `div.board-view-info h2.view-title`과 `div.view-con`을 사용한다. 본문이 이미지·첨부만인 공지는 텍스트가 비어 제외된다.
+- 상세 추출 실패는 네트워크 실패와 다르게 `invalid_notice_ids`에 기록되며, 이후 `upsert_to_vectorDB()`가 해당 notice_id의 기존 chunk를 삭제한다.
+- 목록 HTML에 pinned row와 일반 row가 함께 있어도, 같은 절대 상세 URL은 첫 `NoticeTarget` 하나만 유지한다.
+- `arun_many()` 결과는 요청 배열 순서를 보장한다고 가정하지 않는다. 결과 `url`이 요청 URL과 일치할 때만 연결하고, 일치하지 않으면 해당 URL을 실패로 기록한다.
+- `main.py` E2E는 최신 상세 Rule 기준 15개 저장·7개 추출 실패를 확인했다. 실제 저장 공지를 대상으로 추천 1건과 SES 발송 1건, 같은 공지의 중복 발송 차단을 검증했다.
+- 다중 사이트를 지원하는 코드 구조는 있으나 실제 규칙 생성·추출 통합 검증은 건국대 한 곳뿐이다. 평가 전에는 다중 사이트 성능을 완성된 사실처럼 표현하지 않는다.
+- RAG의 1,000자 청킹, 유사도 0.65와 0.8/0.2 점수 가중치는 아직 평가 데이터로 검증되지 않은 Baseline이다.
+- Chat은 Agent의 증거가 아니라 사용자 프로필 수집 인터페이스다. 정적 프로필 대비 추천 품질 개선을 측정할 수 있을 때 도입한다.
+- 기능 확장을 영구 중단한 것이 아니다. 수집·RAG 실험에서 확인한 문제를 해결하는 순서로 사용자 DB, Chat, 웹 UI를 구현한다.
 - Source 등록 API는 실제 DNS 조회를 수행한다. 테스트에서는 `validate_public_url`을 Mock해 외부 네트워크 요청을 막는다.
 - `fetch_html()`의 URL 검증은 `asyncio.to_thread()`에서 실행한다.
 - 크롤링 규칙 생성 엔드포인트 안의 동기 Supabase Repository 호출은 현재 이벤트 루프에서 실행된다. 트래픽 증가 시 비동기 Client 또는 thread offload를 검토한다.
@@ -218,6 +259,7 @@ users 1 ── N subscriptions N ── 1 sources
 - `supabase/migrations/20260819000000_create_source_crawl_rules.sql` - 사이트별 버전형 크롤링 규칙 migration
 - `app/schemas/crawl_rule.py` - 크롤링 규칙 상태, CSS 스키마, DB 행 모델
 - `app/repositories/crawl_rule.py` - SourceCrawlRuleRepository Protocol과 Supabase 구현
+- `supabase/migrations/20260901000000_add_detail_rule_definition.sql` - 상세 Rule JSONB 컬럼과 객체 제약
 - `test/schemas/test_crawl_rule.py` - CSS 규칙 직렬화와 필드 검증 테스트
 - `test/repositories/test_source_crawl_rule.py` - Mock Client를 사용하는 크롤링 규칙 Repository 단위 테스트
 - `test/mvp2/test_generate_schema.py` - 건국대 공지 generate_schema 로컬 실험. `RUN_GENERATE_SCHEMA_TEST=1`일 때만 pytest가 실행한다
@@ -226,8 +268,8 @@ users 1 ── N subscriptions N ── 1 sources
 - `test/repositories/test_source.py` - Mock Client를 사용하는 실제 Repository 단위 테스트
 - `test/services/test_crawl_rule_service.py` - 스키마 검증·상태 전환·URL 재검증 테스트
 - `test/integrations/test_url_safety.py` - 공개·사설 IP와 DNS URL 정책 테스트
-- `ai_graphs/ingestion_graph/models.py` - 배치용 Source. id와 rule_definition 포함
-- `ai_graphs/ingestion_graph/nodes.py` - DB Source 로딩과 CSS 목록 추출
+- `ai_graphs/ingestion_graph/models.py` - 배치용 Source, 목록 제목과 상세 Rule을 갖는 NoticeTarget
+- `ai_graphs/ingestion_graph/nodes.py` - 목록·상세 CSS 추출, legacy fallback, 무효 공지 chunk 정리
 - `seed_konkuk_rule.py` - 로컬 건국대 규칙 저장·활성화 스크립트
 - `data/userURL.json` - DB 전환 전 임시 Source 입력. Ingestion은 더 이상 사용하지 않음
 - `data/userInfo.md` - DB 전환 전 임시 사용자·추천 Query 입력
@@ -235,9 +277,12 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/crawl-rule-api`
+- HEAD: `7870cec` (`docs: 크롤링 규칙 API 작업 인계 갱신`)
 - 최근 코드 커밋: `9d1f4ab` (`feat: 크롤링 규칙 생성 API`), `a4cd6ea` (`fix: 외부 URL SSRF 사전 차단`)
-- 작업 트리: 기능·보안·HANDOFF 변경을 3개 커밋으로 정리한 clean 상태
-- 안전 테스트: `conda run -n infohelper pytest test/api test/repositories test/schemas test/services test/integrations test/ingestion_graph -q` → `79 passed, 1 warning`
-- 문법·diff 검사: `python -m compileall`과 `git diff --check` 통과
-- 외부 연동 테스트: 이번 세션에서는 실제 Supabase·Gemini·Crawl4AI 호출을 실행하지 않음
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 Crawl4AI redirect·브라우저 요청 SSRF 가드부터 이어서 진행해줘`
+- 작업 트리: 상세 Rule 구현·테스트·migration·HANDOFF가 아직 커밋되지 않았다. 기존 Gemini 모델 변경과 HANDOFF 변경도 포함돼 있다.
+- 안전 테스트: `conda run -n infohelper pytest test/api test/repositories test/schemas test/services test/integrations test/ingestion_graph test/recommendation_graph test/delivery -q` → `110 passed, 1 warning`
+- 문법 검사: `conda run -n infohelper python -m compileall -q app ai_graphs delivery integrations main.py` 통과
+- diff 검사: `git diff --check` 통과.
+- 로컬 DB: migration `20260901000000_add_detail_rule_definition.sql` 적용 및 `supabase db lint --local` 통과
+- 외부 연동: v5 Rule 생성 E2E와 Ingestion·Recommendation·SES E2E를 실행했다. 최신 실행은 15 chunks, 7 extraction errors, 1 recommendation이며 SES 발송·중복 차단을 확인했다.
+- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 목록 URL 중복 제거와 상세 추출 실패 공지 정책을 정리한 뒤 RAG Baseline 측정으로 이어서 진행해줘`
