@@ -135,6 +135,8 @@ def expected_insert_payload(version: int) -> dict[str, object]:
             exclude_none=True,
         ),
         "detail_rule_definition": None,
+        "list_crawl_mode": "default",
+        "detail_crawl_mode": "default",
         "generated_by": rule.generated_by.value,
     }
 
@@ -225,6 +227,8 @@ def test_create_candidate_saves_detail_rule_as_schema_version_two() -> None:
             "rule_schema_version": 2,
             "rule_definition": RULE_DEFINITION,
             "detail_rule_definition": DETAIL_RULE_DEFINITION,
+            "list_crawl_mode": "default",
+            "detail_crawl_mode": "default",
             "generated_by": "llm",
         }
     )

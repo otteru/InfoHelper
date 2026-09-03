@@ -7,7 +7,7 @@ import pytest
 
 from ai_graphs.ingestion_graph import nodes
 from ai_graphs.ingestion_graph.models import CrawlFailure, NoticeTarget, Source
-from app.schemas.crawl_rule import CrawlRuleDefinition
+from app.schemas.crawl_rule import CrawlMode, CrawlRuleDefinition
 from integrations.url_safety import UnsafeUrlError
 
 DUMMY_RULE = CrawlRuleDefinition.model_validate(
@@ -163,6 +163,19 @@ def test_arun_many_전체_예외를_url별_실패로_변환한다(monkeypatch) -
     ]
 
 
+def test_수집_모드별_Crawl4AI_설정을_만든다() -> None:
+    """수집 모드마다 필요한 렌더링 옵션을 분리한다."""
+    default = nodes._build_crawler_config(CrawlMode.DEFAULT)
+    dynamic = nodes._build_crawler_config(CrawlMode.DYNAMIC)
+    infinite_scroll = nodes._build_crawler_config(CrawlMode.INFINITE_SCROLL)
+
+    assert default.wait_until == "domcontentloaded"
+    assert dynamic.wait_until == "networkidle"
+    assert dynamic.delay_before_return_html == 5
+    assert infinite_scroll.scan_full_page is True
+    assert infinite_scroll.max_scroll_steps == 2
+
+
 def test_안전하지_않은_url은_브라우저_호출_전에_차단한다(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -252,7 +265,11 @@ def test_crawl4ai_역순_결과를_요청_url_순서로_복원한다(
 
 def test_목록_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
     """실패한 목록 페이지를 건너뛰고 성공한 목록의 URL만 추출한다."""
-    async def fake_crawl(urls: list[str]) -> list[object]:
+    async def fake_crawl(
+        urls: list[str],
+        crawl_modes: list[CrawlMode],
+    ) -> list[object]:
+        assert crawl_modes == [CrawlMode.DEFAULT, CrawlMode.DEFAULT]
         return [
             CrawlFailure(url=urls[0], message="TimeoutError: 시간 초과"),
             SimpleNamespace(
@@ -318,7 +335,11 @@ def test_css_추출_예외를_errors에_기록한다(monkeypatch) -> None:
         url="https://success.example.com/artclView.do?id=1",
     )
 
-    async def fake_crawl(urls: list[str]) -> list[object]:
+    async def fake_crawl(
+        urls: list[str],
+        crawl_modes: list[CrawlMode],
+    ) -> list[object]:
+        assert crawl_modes == [CrawlMode.DEFAULT, CrawlMode.DEFAULT]
         return [
             SimpleNamespace(
                 success=True,
@@ -454,7 +475,11 @@ def test_load_sources_빈_목록을_처리한다(monkeypatch) -> None:
 
 def test_상세_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
     """실패한 상세 공지를 건너뛰고 성공한 공지만 Notice로 만든다."""
-    async def fake_crawl(urls: list[str]) -> list[object]:
+    async def fake_crawl(
+        urls: list[str],
+        crawl_modes: list[CrawlMode],
+    ) -> list[object]:
+        assert crawl_modes == [CrawlMode.DEFAULT, CrawlMode.DEFAULT]
         return [
             CrawlFailure(url=urls[0], message="RuntimeError: 브라우저 오류"),
             SimpleNamespace(
@@ -498,7 +523,11 @@ def test_상세_크롤링_실패를_errors에_기록한다(monkeypatch) -> None:
 
 def test_상세_규칙으로_제목과_본문을_추출한다(monkeypatch) -> None:
     """상세 Rule이 있으면 전체 Markdown 대신 추출한 제목과 본문을 사용한다."""
-    async def fake_crawl(urls: list[str]) -> list[object]:
+    async def fake_crawl(
+        urls: list[str],
+        crawl_modes: list[CrawlMode],
+    ) -> list[object]:
+        assert crawl_modes == [CrawlMode.DEFAULT]
         return [
             SimpleNamespace(
                 success=True,
@@ -577,7 +606,11 @@ def test_상세_추출_실패_공지를_무효_목록에_기록한다(monkeypatc
         detail_rule_definition=DUMMY_DETAIL_RULE,
     )
 
-    async def fake_crawl(urls: list[str]) -> list[object]:
+    async def fake_crawl(
+        urls: list[str],
+        crawl_modes: list[CrawlMode],
+    ) -> list[object]:
+        assert crawl_modes == [CrawlMode.DEFAULT]
         return [
             SimpleNamespace(
                 success=True,
@@ -614,7 +647,7 @@ def test_무효_공지의_기존_청크를_삭제한다() -> None:
     supabase.table.return_value = query
     runtime = SimpleNamespace(
         context=SimpleNamespace(
-            gemini_client=object(),
+            embedding_client=object(),
             supabase_client=supabase,
         )
     )

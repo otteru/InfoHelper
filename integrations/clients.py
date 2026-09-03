@@ -1,17 +1,41 @@
 import os
 
-from google import genai
+from openai import OpenAI
 from supabase import Client, create_client
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+GENERATION_MODEL = "google/gemini-3.6-flash"
+EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
+EMBEDDING_DIMENSIONS = 1536
+CRAWL4AI_GENERATION_PROVIDER = f"openrouter/{GENERATION_MODEL}"
 
-def create_gemini_client() -> genai.Client:
-    """환경변수를 사용해 Gemini 클라이언트를 생성한다."""
-    google_api_key = os.environ.get("GOOGLE_API_KEY")
 
-    if not google_api_key:
-        raise RuntimeError("GOOGLE_API_KEY가 설정되지 않았습니다.")
+def create_openrouter_client() -> OpenAI:
+    """환경변수를 사용해 OpenRouter 클라이언트를 생성한다."""
+    api_key = os.environ.get("OPENROUTER_API_KEY")
 
-    return genai.Client(api_key=google_api_key)
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY가 설정되지 않았습니다.")
+
+    return OpenAI(base_url=OPENROUTER_BASE_URL, api_key=api_key)
+
+
+def create_embedding(client: OpenAI, text: str) -> list[float]:
+    """텍스트를 OpenRouter 임베딩 벡터로 변환한다."""
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text,
+        dimensions=EMBEDDING_DIMENSIONS,
+    )
+
+    if not response.data:
+        raise ValueError("임베딩 결과가 비어 있습니다.")
+
+    values = response.data[0].embedding
+    if not values:
+        raise ValueError("임베딩 값을 가져오지 못했습니다.")
+
+    return values
 
 
 def create_supabase_client() -> Client:

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from ai_graphs.ingestion_graph.graph import create_ingestion_graph
 from ai_graphs.recommendation_graph.graph import create_recommendation_graph
 from integrations.clients import (
-    create_gemini_client,
+    create_openrouter_client,
     create_supabase_client,
 )
 from ai_graphs.shared.context import GraphContext
@@ -110,7 +110,7 @@ async def main() -> None:
     load_dotenv()
 
     context = GraphContext(
-        gemini_client=create_gemini_client(),
+        embedding_client=create_openrouter_client(),
         supabase_client=create_supabase_client(),
     )
 

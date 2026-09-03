@@ -70,6 +70,8 @@ class SupabaseSourceCrawlRuleRepository:
                 if rule.detail_rule_definition is not None
                 else None
             ),
+            "list_crawl_mode": rule.list_crawl_mode.value,
+            "detail_crawl_mode": rule.detail_crawl_mode.value,
             "generated_by": rule.generated_by.value,
         }
 

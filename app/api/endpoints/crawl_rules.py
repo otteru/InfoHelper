@@ -14,7 +14,10 @@ from app.exceptions import (
 )
 from app.repositories.crawl_rule import SourceCrawlRuleRepository
 from app.repositories.source import SourceRepository
-from app.schemas.crawl_rule import SourceCrawlRuleResponse
+from app.schemas.crawl_rule import (
+    CrawlRuleGenerationRequest,
+    SourceCrawlRuleResponse,
+)
 from app.services.crawl_rule import generate_candidate
 
 router = APIRouter(
@@ -38,13 +41,20 @@ async def create_crawl_rule(
         SourceCrawlRuleRepository,
         Depends(get_crawl_rule_repository),
     ],
+    request: CrawlRuleGenerationRequest | None = None,
 ) -> SourceCrawlRuleResponse:
     """사이트에 대한 새로운 크롤링 규칙을 생성한다."""
     try:
         source = source_repository.get_by_id(source_id)
         if source is None:
             raise SourceNotFoundError
-        return await generate_candidate(source, crawl_rule_repository)
+        crawl_modes = request or CrawlRuleGenerationRequest()
+        return await generate_candidate(
+            source,
+            crawl_rule_repository,
+            list_crawl_mode=crawl_modes.list_crawl_mode,
+            detail_crawl_mode=crawl_modes.detail_crawl_mode,
+        )
     except SourceNotFoundError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

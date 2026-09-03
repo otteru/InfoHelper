@@ -104,7 +104,7 @@
 - [x] 크롤링 규칙 생성 FastAPI 구현
   - `POST /api/v1/sources/{source_id}/crawl_rules` 엔드포인트와 라우터를 추가했다
   - `SourceRepository.get_by_id`로 등록된 Source를 조회한다
-  - Source HTML을 가져와 Crawl4AI와 Gemini로 CSS 스키마를 생성한다
+  - Source HTML을 가져와 Crawl4AI와 OpenRouter LLM으로 CSS 스키마를 생성한다
   - `target_json_example`은 단일 객체의 `title`, `url` 필드를 사용한다
   - Crawl4AI `validate=True`, `max_refinements=3`으로 스키마 보정을 시도한다
   - 생성된 스키마를 같은 HTML에 적용해 `title`, `url`이 채워진 공지가 있는지 다시 검증한다
@@ -130,7 +130,7 @@
   - 이미지·첨부 중심 공지가 있어 3개 모두 본문을 요구하지 않고, 1~2개 샘플은 전부·3개 샘플은 최소 2개 통과 시 활성화하도록 구현했다.
   - Ingestion은 상세 Rule이 있으면 실제 title/content만 저장하고, 상세 추출 실패 공지의 기존 chunk를 삭제해 오염된 과거 데이터가 RAG에 남지 않게 했다.
   - 목록에서 추출한 title은 상세 title이 비었을 때 fallback으로 사용한다.
-  - Gemini 모델은 Crawl4AI 0.9.2 호환을 위해 `gemini/gemini-2.5-flash`로 변경했다.
+  - 당시 Crawl4AI 0.9.2 호환을 위해 `gemini/gemini-2.5-flash`를 썼고, 이후 OpenRouter `google/gemini-3.6-flash`로 바꿨다.
 - [x] 상세 Rule 로컬 E2E 검증
   - migration 적용과 `supabase db lint --local`이 통과했다.
   - 건국대 Source `f25944ce-c864-497b-9c74-df5bdaff229d`에 v4 규칙이 `active/passed`로 전환됐다.
@@ -141,9 +141,32 @@
   - Crawl4AI `arun_many()`의 반환 순서가 요청 순서와 다를 수 있어, 결과의 `url`로 원래 요청 순서에 다시 정렬하도록 수정했다.
   - 결과를 역순으로 반환하는 단위 테스트와 실제 건국대 E2E로 제목·본문·URL이 같은 공지를 가리키는지 검증했다.
   - Energy Summer Academy 공지는 올바른 URL `1200589`로 저장·SES 발송됐고, 잘못 연결됐던 `1202619` chunk는 삭제됐다.
+- [x] Gemini 일일 한도 대응으로 OpenRouter 전환
+  - generation/embedding 모두 `OPENROUTER_API_KEY`를 사용한다.
+  - 현재 generation은 `google/gemini-3.6-flash`, embedding은 `qwen/qwen3-embedding-8b`다.
+  - Crawl4AI provider는 `openrouter/{GENERATION_MODEL}`이다. 상수는 `integrations/clients.py`에 있다.
+  - 기존 `notice_chunks` 차원과 맞추려고 embedding `dimensions=1536`을 유지한다.
+  - GraphContext는 `gemini_client` 대신 `embedding_client`(OpenAI SDK)다.
+- [x] 목록 CSS 생성 프롬프트를 공고/공지 목적 지향으로 변경
+  - `LIST_SCHEMA_QUERY`는 테이블 행이 아니라 반복 항목의 title/url을 뽑도록 바꿨다.
+  - 루트가 이미 `a`면 url은 자식 `a`가 아니라 `baseFields` href를 쓰라고 명시했다.
+- [x] 루트 링크 url 보정
+  - `_normalize_root_link_url()`이 `baseSelector`가 `a`인데 `fields.url.selector`가 자식 `a`인 스키마를 `baseFields.href`로 옮긴다.
+  - 직행 카드가 `<a class="relative" href="/recruitment/...">`인 경우를 위한 안전망이다.
 
 ## 진행 중인 작업
 
+- [ ] 직행(`https://zighang.com/it`) 크롤링 규칙 생성 E2E
+  - Source id: `36701990-2c33-4979-801d-cbaf59c04154`
+  - curl: `list_crawl_mode=infinite_scroll`, `detail_crawl_mode=dynamic`
+  - `google/gemini-3.6-flash`로 목록 스키마는 통과했다. `baseSelector: main div.grid > a`, title 40건 + url 40건.
+  - 같은 날 반복 크롤 후 헤드리스가 anti-bot에 막혔다. 페이지는 131바이트/가시 문자 20자라 502가 났다.
+  - 일반 브라우저에서는 열린다. 내일 재시도가 우선이다.
+  - 상세 Rule 생성·3샘플 검증까지는 아직 못 갔다.
+- [ ] RAG 평가 데이터셋 (`feat/rag-eval-dataset`)
+  - 목표 순서: 데이터셋(qrels, TREC pooling) → 벤치마크 시스템 → 기존 RAG 평가 → query prefix → 청킹 → Retrieval → Reranker → dimension
+  - 평가 corpus는 건국대 공지 대신 직행 채용공고를 쓰려 했다.
+  - 평가 임베딩은 운영 `notice_chunks`와 분리된 테이블이 필요하다. 아직 안 만들었다.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -160,12 +183,15 @@
 
 ## 다음에 해야 할 작업
 
-1. 이미지·첨부 중심 공지는 텍스트 RAG 대상에서 제외할지, OCR·첨부 텍스트 추출을 별도 기능으로 둘지 결정한다. 현재는 제외가 구현된 동작이다.
-2. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
-3. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
-4. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
-5. 대학 공지 사이트 10~20개로 규칙 생성 성공률, URL 추출 정확도, 비용, 지연시간과 실패 원인을 측정한다.
-6. 이후 사용자 DB·추천 피드백, Chat 프로필, 최소 웹 UI 순으로 진행한다.
+1. 내일 직행 크롤 규칙 생성을 다시 친다. 브라우저에서 `https://zighang.com/it`가 열리는지 확인한 뒤 같은 curl을 보낸다. 목록은 Gemini 3.6 Flash로 이미 한 번 통과했다.
+2. 여전히 anti-bot이면 Crawl4AI stealth/User-Agent를 검토한다. 지금은 `BrowserConfig(headless=True)`만 쓴다.
+3. 목록 통과 후 상세 Rule 생성과 3샘플 검증까지 E2E를 끝낸다.
+4. Qwen embedding으로 바꾼 뒤 기존 Gemini 벡터와 섞이면 검색이 깨진다. 평가용은 별도 테이블, 운영 재임베딩은 따로 결정한다.
+5. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
+6. 이미지·첨부 중심 공지는 텍스트 RAG 대상에서 제외할지, OCR·첨부 텍스트 추출을 별도 기능으로 둘지 결정한다. 현재는 제외가 구현된 동작이다.
+7. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
+8. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
+9. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
 
@@ -213,11 +239,19 @@ users 1 ── N subscriptions N ── 1 sources
 - Supabase CLI는 프로젝트 루트에서 실행하고 Docker Desktop이 필요하다.
 - `supabase db reset`은 로컬 DB를 초기화한다. 원격 DB를 지우는 `--linked`를 붙이지 않는다.
 - `.env`, `.env.local`, Supabase Secret Key, API key, AWS 인증정보를 커밋하지 않는다.
-- 루트 `main.py`는 실제 크롤링·Gemini·Supabase·SES 요청을 실행한다.
+- 루트 `main.py`는 실제 크롤링·OpenRouter embedding·Supabase·SES 요청을 실행한다.
+- 생성 LLM과 임베딩은 OpenRouter다. 키는 `OPENROUTER_API_KEY`. 모델 상수는 `integrations/clients.py`의 `GENERATION_MODEL`, `EMBEDDING_MODEL`.
+- 시도했던 generation 모델: `google/gemma-3-27b-it`(CSS 선택자 불안정), `qwen/qwen3-32b`(너무 느림), 현재 `google/gemini-3.6-flash`.
+- Gemma는 루트 `a`의 href를 자식 `a`로 찾거나, 안쪽 div class를 바깥 `a`에 붙이는 실수를 자주 했다. 프롬프트+`_normalize_root_link_url`은 전자만 보정한다.
+- 직행 카드 마크업은 `<a class="relative" href="/recruitment/{uuid}"><div class="fade-in bg-primary-light group ...">`다.
+- 오늘 후반 직행 크롤은 Crawl4AI anti-bot detector가 `minimal_text`로 실패했다. 실제 브라우저에서는 열린다. 같은 IP 반복 크롤이 원인일 가능성이 크다.
+- Qwen embedding과 기존 Gemini embedding을 같은 `notice_chunks`에 섞지 않는다. 차원은 둘 다 1536이어도 공간은 다르다.
+- `ai_graphs/ingestion_graph/tools.py`의 `setup_gemini_model`은 아직 Gemini leftover다. 사용 경로가 아니면 나중에 정리한다.
+- 인프라 `infra/ecs.py` secrets는 아직 `GOOGLE_API_KEY`다.
 - `test/mvp1/requests_test.py`는 import 시 네트워크 요청을 실행하므로 전체 `pytest`는 피한다.
-- `SourceCrawlRuleRepository`는 Ingestion `load_sources`에서 쓰인다. 규칙 전용 FastAPI 엔드포인트는 아직 없다.
+- `SourceCrawlRuleRepository`는 Ingestion `load_sources`와 `POST /api/v1/sources/{source_id}/crawl_rules`에서 쓰인다.
 - uvicorn `--reload --env-file .env.local`만으로는 자식 프로세스에 `SUPABASE_URL`이 없을 수 있다. 로컬 API는 `.env.local`을 셸에 source한 뒤 실행한다.
-- `seed_konkuk_rule.py`는 로컬 Source UUID가 박혀 있다. 원격 DB에 돌리지 않는다.
+- `seed_konkuk_rule.py`는 이 브랜치에서 삭제됐다. 건국대 규칙은 DB의 active 행을 사용한다.
 - `activate`는 이미 active가 아니면 `validation_status=passed`만 허용한다. 시드 스크립트는 활성화 전에 passed로 바꾼다.
 - `version` 번호는 max+1이라 동시 생성 시 unique violation이 날 수 있다. MVP에서는 나중에 처리한다.
 - `update()` payload는 `dict[str, str | None]`이며 Supabase JSON 타입으로 `cast`한다.
@@ -248,12 +282,15 @@ users 1 ── N subscriptions N ── 1 sources
 - `app/api/router.py` - API v1 라우터 조립
 - `app/api/endpoints/sources.py` - Source 등록 엔드포인트와 Repository 주입
 - `app/api/endpoints/crawl_rules.py` - CSS 크롤링 규칙 생성 엔드포인트
-- `app/services/crawl_rule.py` - HTML 수집, 스키마 생성·검증, candidate 상태 전환과 활성화
+- `app/services/crawl_rule.py` - HTML 수집, 스키마 생성·검증, 루트 `a` url 보정, candidate 상태 전환과 활성화
 - `app/api/dependencies.py` - Supabase, Source와 Crawl Rule Repository dependency
 - `app/schemas/source.py` - Source 요청·응답 스키마
 - `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현. `list_all`, `get_by_id` 포함
 - `app/exceptions.py` - Source와 크롤링 규칙 도메인 오류
-- `integrations/clients.py` - Gemini·Supabase 공통 클라이언트 생성
+- `integrations/clients.py` - OpenRouter·Supabase 공통 클라이언트와 generation/embedding 모델 상수
+- `integrations/crawl_config.py` - default/dynamic/infinite_scroll Crawl4AI 실행 설정
+- `test/integrations/test_clients.py` - OpenRouter 키 검사와 embedding 파싱 테스트
+- `docs/rag-eval-dataset.md` - RAG 고도화 브랜치 목표 목록
 - `integrations/url_safety.py` - URL 형태·DNS·공개 IP 기반 SSRF 1차 검증
 - `supabase/migrations/20260814051424_create_sources.sql` - sources 테이블 migration
 - `supabase/migrations/20260819000000_create_source_crawl_rules.sql` - 사이트별 버전형 크롤링 규칙 migration
@@ -270,19 +307,26 @@ users 1 ── N subscriptions N ── 1 sources
 - `test/integrations/test_url_safety.py` - 공개·사설 IP와 DNS URL 정책 테스트
 - `ai_graphs/ingestion_graph/models.py` - 배치용 Source, 목록 제목과 상세 Rule을 갖는 NoticeTarget
 - `ai_graphs/ingestion_graph/nodes.py` - 목록·상세 CSS 추출, legacy fallback, 무효 공지 chunk 정리
-- `seed_konkuk_rule.py` - 로컬 건국대 규칙 저장·활성화 스크립트
 - `data/userURL.json` - DB 전환 전 임시 Source 입력. Ingestion은 더 이상 사용하지 않음
 - `data/userInfo.md` - DB 전환 전 임시 사용자·추천 Query 입력
 
 ## 마지막 상태
 
-- 브랜치: `feat/crawl-rule-api`
-- HEAD: `7870cec` (`docs: 크롤링 규칙 API 작업 인계 갱신`)
-- 최근 코드 커밋: `9d1f4ab` (`feat: 크롤링 규칙 생성 API`), `a4cd6ea` (`fix: 외부 URL SSRF 사전 차단`)
-- 작업 트리: 상세 Rule 구현·테스트·migration·HANDOFF가 아직 커밋되지 않았다. 기존 Gemini 모델 변경과 HANDOFF 변경도 포함돼 있다.
-- 안전 테스트: `conda run -n infohelper pytest test/api test/repositories test/schemas test/services test/integrations test/ingestion_graph test/recommendation_graph test/delivery -q` → `110 passed, 1 warning`
-- 문법 검사: `conda run -n infohelper python -m compileall -q app ai_graphs delivery integrations main.py` 통과
-- diff 검사: `git diff --check` 통과.
-- 로컬 DB: migration `20260901000000_add_detail_rule_definition.sql` 적용 및 `supabase db lint --local` 통과
-- 외부 연동: v5 Rule 생성 E2E와 Ingestion·Recommendation·SES E2E를 실행했다. 최신 실행은 15 chunks, 7 extraction errors, 1 recommendation이며 SES 발송·중복 차단을 확인했다.
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 목록 URL 중복 제거와 상세 추출 실패 공지 정책을 정리한 뒤 RAG Baseline 측정으로 이어서 진행해줘`
+- 브랜치: `feat/rag-eval-dataset`
+- 마지막 커밋: `4005be0` Merge pull request #6 from otteru/ci/supabase-migrations
+- 오늘 작업은 커밋하지 않았다. OpenRouter 전환, 프롬프트, url 보정, crawl_mode migration 등이 working tree에 남아 있다.
+- 테스트: 관련 단위 테스트는 통과했다. 직행 규칙 생성 E2E는 anti-bot로 중단됐다.
+- 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
+- 재개 curl:
+
+```bash
+curl --max-time 300 \
+  -X POST "http://127.0.0.1:8000/api/v1/sources/36701990-2c33-4979-801d-cbaf59c04154/crawl_rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "list_crawl_mode": "infinite_scroll",
+    "detail_crawl_mode": "dynamic"
+  }'
+```
+
+- 다음 세션 시작: `docs/HANDOFF.md 읽고 직행 크롤 규칙 생성부터 이어서 진행해줘`
