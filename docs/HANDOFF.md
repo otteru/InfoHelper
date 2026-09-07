@@ -156,16 +156,21 @@
 
 ## 진행 중인 작업
 
-- [ ] 직행(`https://zighang.com/it`) 크롤링 규칙 생성 E2E
+- [x] 직행(`https://zighang.com/it`) 크롤링 규칙 생성·규칙 적용 E2E
   - Source id: `36701990-2c33-4979-801d-cbaf59c04154`
   - curl: `list_crawl_mode=infinite_scroll`, `detail_crawl_mode=dynamic`
-  - `google/gemini-3.6-flash`로 목록 스키마는 통과했다. `baseSelector: main div.grid > a`, title 40건 + url 40건.
-  - 같은 날 반복 크롤 후 헤드리스가 anti-bot에 막혔다. 페이지는 131바이트/가시 문자 20자라 502가 났다.
-  - 일반 브라우저에서는 열린다. 내일 재시도가 우선이다.
-  - 상세 Rule 생성·3샘플 검증까지는 아직 못 갔다.
+  - 첫 실행은 `wait_until=networkidle` 60초 timeout으로 502가 났으나, 다음 실행은 16.7초에 통과했다. 직행의 분석·위젯 등 지속 요청 때문에 `networkidle`은 비결정적이다.
+  - 목록·상세 규칙을 생성하고 `active/passed` 상태로 전환했다. 목록 규칙은 `main .grid > a`, 상세 규칙은 `main > h1`과 `.tiptap.ProseMirror`다.
+  - active 규칙을 DB에서 읽어 목록과 상세 3개에 읽기 전용으로 적용했다. 목록 20개, 상세 제목·본문 3개(556자, 466자, 4,804자)를 성공적으로 추출했다.
+  - 현재 `infinite_scroll`은 `max_scroll_steps=2`라 전체 공고 corpus 수집에는 쓰지 않는다.
 - [ ] RAG 평가 데이터셋 (`feat/rag-eval-dataset`)
   - 목표 순서: 데이터셋(qrels, TREC pooling) → 벤치마크 시스템 → 기존 RAG 평가 → query prefix → 청킹 → Retrieval → Reranker → dimension
-  - 평가 corpus는 건국대 공지 대신 직행 채용공고를 쓰려 했다.
+  - 평가 corpus는 건국대 공지 대신 직행 IT·개발 채용공고 5,000건으로 만들었다.
+  - 직행 목록 API는 `GET https://api.zighang.com/api/recruitments`이며 응답은 `{ timestamp, success, data, code, message }`, 실제 페이지 정보는 `data.content`, `data.page`, `data.size`, `data.totalElements`, `data.totalPages`, `data.last`에 있다.
+  - UI의 IT·개발 필터는 반복된 `depthTwos` query parameter 25개로 전달된다. 필터 미적용 API는 사용하지 않는다.
+  - `RAG_evaluation/crawler/zighang.py`가 IT 필터와 `page`를 순회해 목록·상세 API 원본, checkpoint, 평가 corpus를 저장한다.
+  - 원문 `content`를 우선 사용하고 이미지뿐인 공고는 직행 `summary`를 사용한다. 5,000건 중 원문은 221건, 요약은 4,779건이다.
+  - 전체 ID·제목·본문·메타데이터·본문 해시·IT 필터를 원본 API 응답과 대조했고, 실제 상세 페이지 3건도 제목·전체 텍스트 일치를 확인했다.
   - 평가 임베딩은 운영 `notice_chunks`와 분리된 테이블이 필요하다. 아직 안 만들었다.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
@@ -183,15 +188,13 @@
 
 ## 다음에 해야 할 작업
 
-1. 내일 직행 크롤 규칙 생성을 다시 친다. 브라우저에서 `https://zighang.com/it`가 열리는지 확인한 뒤 같은 curl을 보낸다. 목록은 Gemini 3.6 Flash로 이미 한 번 통과했다.
-2. 여전히 anti-bot이면 Crawl4AI stealth/User-Agent를 검토한다. 지금은 `BrowserConfig(headless=True)`만 쓴다.
-3. 목록 통과 후 상세 Rule 생성과 3샘플 검증까지 E2E를 끝낸다.
-4. Qwen embedding으로 바꾼 뒤 기존 Gemini 벡터와 섞이면 검색이 깨진다. 평가용은 별도 테이블, 운영 재임베딩은 따로 결정한다.
-5. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
-6. 이미지·첨부 중심 공지는 텍스트 RAG 대상에서 제외할지, OCR·첨부 텍스트 추출을 별도 기능으로 둘지 결정한다. 현재는 제외가 구현된 동작이다.
-7. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
-8. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
-9. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
+1. `corpus.jsonl`의 50자 미만 본문 318건과 동일 본문 29그룹을 정제 기준으로 분리하고, 정제 전후 평가 corpus를 결정한다.
+2. qrels와 TREC pooling 방식의 평가 쿼리를 만들고 Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간을 측정하는 벤치마크를 구현한다.
+3. Qwen embedding으로 바꾼 뒤 기존 Gemini 벡터와 섞이면 검색이 깨진다. 평가용은 별도 테이블, 운영 재임베딩은 따로 결정한다.
+4. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
+5. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
+6. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
+7. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
 
@@ -244,7 +247,9 @@ users 1 ── N subscriptions N ── 1 sources
 - 시도했던 generation 모델: `google/gemma-3-27b-it`(CSS 선택자 불안정), `qwen/qwen3-32b`(너무 느림), 현재 `google/gemini-3.6-flash`.
 - Gemma는 루트 `a`의 href를 자식 `a`로 찾거나, 안쪽 div class를 바깥 `a`에 붙이는 실수를 자주 했다. 프롬프트+`_normalize_root_link_url`은 전자만 보정한다.
 - 직행 카드 마크업은 `<a class="relative" href="/recruitment/{uuid}"><div class="fade-in bg-primary-light group ...">`다.
-- 오늘 후반 직행 크롤은 Crawl4AI anti-bot detector가 `minimal_text`로 실패했다. 실제 브라우저에서는 열린다. 같은 IP 반복 크롤이 원인일 가능성이 크다.
+- 직행의 `networkidle` timeout 로그는 확정적인 anti-bot 차단 증거가 아니다. 실제 브라우저와 Crawl4AI에서 목록·상세 추출은 성공했지만, 백그라운드 요청 타이밍 때문에 결과가 흔들린다.
+- 직행은 스크롤할 때 공고 20개씩 DOM에 추가한다. 3,000~5,000건 수집에 `scan_full_page`/`max_scroll_steps`를 늘리는 방식은 사용하지 않고 목록 API 페이지네이션을 사용한다.
+- 직행 API의 IT 필터는 반복된 `depthTwos` query parameter로 전달된다. API 응답은 최상단 `data` 안에 페이지 정보를 둔다.
 - Qwen embedding과 기존 Gemini embedding을 같은 `notice_chunks`에 섞지 않는다. 차원은 둘 다 1536이어도 공간은 다르다.
 - `ai_graphs/ingestion_graph/tools.py`의 `setup_gemini_model`은 아직 Gemini leftover다. 사용 경로가 아니면 나중에 정리한다.
 - 인프라 `infra/ecs.py` secrets는 아직 `GOOGLE_API_KEY`다.
@@ -315,7 +320,7 @@ users 1 ── N subscriptions N ── 1 sources
 - 브랜치: `feat/rag-eval-dataset`
 - 마지막 커밋: `4005be0` Merge pull request #6 from otteru/ci/supabase-migrations
 - 오늘 작업은 커밋하지 않았다. OpenRouter 전환, 프롬프트, url 보정, crawl_mode migration 등이 working tree에 남아 있다.
-- 테스트: 관련 단위 테스트는 통과했다. 직행 규칙 생성 E2E는 anti-bot로 중단됐다.
+- 테스트: 관련 단위 테스트 122개, Python 44개 파일 문법 검사, `supabase db lint --local`이 통과했다. 직행 규칙 생성과 active 규칙의 목록·상세 3건 적용 E2E도 통과했다.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
 - 재개 curl:
 
@@ -329,4 +334,4 @@ curl --max-time 300 \
   }'
 ```
 
-- 다음 세션 시작: `docs/HANDOFF.md 읽고 직행 크롤 규칙 생성부터 이어서 진행해줘`
+- 다음 세션 시작: `docs/HANDOFF.md 읽고 직행 평가 corpus 정제 기준과 qrels 설계부터 이어서 진행해줘`
