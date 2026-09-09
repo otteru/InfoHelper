@@ -171,7 +171,11 @@
   - `RAG_evaluation/crawler/zighang.py`가 IT 필터와 `page`를 순회해 목록·상세 API 원본, checkpoint, 평가 corpus를 저장한다.
   - 원문 `content`를 우선 사용하고 이미지뿐인 공고는 직행 `summary`를 사용한다. 5,000건 중 원문은 221건, 요약은 4,779건이다.
   - 전체 ID·제목·본문·메타데이터·본문 해시·IT 필터를 원본 API 응답과 대조했고, 실제 상세 페이지 3건도 제목·전체 텍스트 일치를 확인했다.
-  - 평가 임베딩은 운영 `notice_chunks`와 분리된 테이블이 필요하다. 아직 안 만들었다.
+  - corpus 정제 기준은 본문 공백 제거 후 50자 미만 제외, `title + content`가 같은 문서는 하나만 유지다. 5,000건에서 318건과 중복 1건을 제거해 4,681건을 `zighang_v1`으로 확정했다. 원본은 로컬 `corpus.before-cleaning.jsonl`에 보관한다.
+  - 운영 `notice_chunks`와 분리해 `eval_documents`, `eval_embedding_runs`, `eval_chunks` 테이블을 만들었다. 원본 공고·실험 설정·실험별 청크/벡터를 분리하고, 복합 외래키와 벡터 차원 제약, RLS/service_role 권한을 적용했다.
+  - `fixed1000_qwen1536_v1` run은 기존 ingestion과 동일하게 본문을 겹침 없이 Python 문자열 1,000자씩 나누고 `title: {title} | text: {chunk}`를 Qwen `qwen/qwen3-embedding-8b` 1,536차원으로 임베딩했다.
+  - 로컬 Supabase에 4,681개 공고와 5,603개 청크를 저장했고 run은 `completed`다. 저장된 벡터의 차원은 모두 1,536이며, 원본 제목·청크와 실제 임베딩 입력의 불일치는 0건이다.
+  - `1000-character-embedding.py`는 dry-run, 소량 실행, 실패 후 재개, batch size 옵션을 제공한다. 같은 run 재실행은 추가 API 호출 없이 종료한다. 다른 모델·차원·청킹은 새 run 이름으로 저장해야 한다.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -188,12 +192,12 @@
 
 ## 다음에 해야 할 작업
 
-1. `corpus.jsonl`의 50자 미만 본문 318건과 동일 본문 29그룹을 정제 기준으로 분리하고, 정제 전후 평가 corpus를 결정한다.
-2. qrels와 TREC pooling 방식의 평가 쿼리를 만들고 Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간을 측정하는 벤치마크를 구현한다.
-3. Qwen embedding으로 바꾼 뒤 기존 Gemini 벡터와 섞이면 검색이 깨진다. 평가용은 별도 테이블, 운영 재임베딩은 따로 결정한다.
-4. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
-5. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
-6. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
+1. `RAG_evaluation/retrieval/dense.py`에 완료된 run을 한정한 Dense top 20 검색을 구현한다. 쿼리는 `text: {query}` 형식으로 같은 model/dimensions를 사용하고, 청크 점수는 공고별 최대값으로 합친다.
+2. `RAG_evaluation/retrieval/lexical.py`에 동일 corpus 4,681건을 쓰는 BM25 top 20 검색을 구현한다.
+3. 두 run을 합쳐 `query_id + doc_id` 기준의 TREC pool을 만들고, 라벨링 파일과 qrels를 작성한다.
+4. Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간 벤치마크를 구현한 뒤 baseline을 기록한다.
+5. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
+6. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
 7. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
@@ -293,6 +297,12 @@ users 1 ── N subscriptions N ── 1 sources
 - `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현. `list_all`, `get_by_id` 포함
 - `app/exceptions.py` - Source와 크롤링 규칙 도메인 오류
 - `integrations/clients.py` - OpenRouter·Supabase 공통 클라이언트와 generation/embedding 모델 상수
+- `RAG_evaluation/embedding/1000-character-embedding.py` - 평가 corpus의 기존 1,000자 청킹 임베딩 실행 진입점
+- `RAG_evaluation/embedding/fixed_character.py` - corpus 검증, 실험 설정, 재개 가능한 임베딩 저장 로직
+- `RAG_evaluation/embedding/README.md` - 실행, 재개, 다른 차원 실험 규칙과 실제 검증 결과
+- `supabase/migrations/20260909000000_create_eval_embedding_tables.sql` - 평가 원본·run·청크/벡터 테이블과 제약
+- `test/rag_evaluation/test_fixed_character.py` - 기존 입력 형식, 벡터 검증, 재개·실패 테스트
+- `test/rag_evaluation/eval_schema.sql` - PostgreSQL 제약·권한·완료 조건 롤백 검증
 - `integrations/crawl_config.py` - default/dynamic/infinite_scroll Crawl4AI 실행 설정
 - `test/integrations/test_clients.py` - OpenRouter 키 검사와 embedding 파싱 테스트
 - `docs/rag-eval-dataset.md` - RAG 고도화 브랜치 목표 목록
@@ -318,9 +328,9 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/rag-eval-dataset`
-- 마지막 커밋: `4005be0` Merge pull request #6 from otteru/ci/supabase-migrations
-- 오늘 작업은 커밋하지 않았다. OpenRouter 전환, 프롬프트, url 보정, crawl_mode migration 등이 working tree에 남아 있다.
-- 테스트: 관련 단위 테스트 122개, Python 44개 파일 문법 검사, `supabase db lint --local`이 통과했다. 직행 규칙 생성과 active 규칙의 목록·상세 3건 적용 E2E도 통과했다.
+- 마지막 커밋: `4e1480d feat: 평가 corpus 임베딩 기반 구성`
+- 평가용 DB migration, 임베딩 실행기, 테스트, HANDOFF 갱신을 위 커밋에 포함했다. 빈 `RAG_evaluation/retrieval/` 디렉터리는 Dense/BM25 구현 전이라 추적하지 않는다.
+- 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
 - 재개 curl:
 
@@ -334,4 +344,4 @@ curl --max-time 300 \
   }'
 ```
 
-- 다음 세션 시작: `docs/HANDOFF.md 읽고 직행 평가 corpus 정제 기준과 qrels 설계부터 이어서 진행해줘`
+- 다음 세션 시작: `docs/HANDOFF.md 읽고 완료된 fixed1000_qwen1536_v1 run으로 Dense/BM25 top 20을 구현하고 TREC pooling을 이어서 진행해줘`

@@ -20,12 +20,18 @@ def create_openrouter_client() -> OpenAI:
     return OpenAI(base_url=OPENROUTER_BASE_URL, api_key=api_key)
 
 
-def create_embedding(client: OpenAI, text: str) -> list[float]:
+def create_embedding(
+    client: OpenAI,
+    text: str,
+    *,
+    model: str = EMBEDDING_MODEL,
+    dimensions: int = EMBEDDING_DIMENSIONS,
+) -> list[float]:
     """텍스트를 OpenRouter 임베딩 벡터로 변환한다."""
     response = client.embeddings.create(
-        model=EMBEDDING_MODEL,
+        model=model,
         input=text,
-        dimensions=EMBEDDING_DIMENSIONS,
+        dimensions=dimensions,
     )
 
     if not response.data:
