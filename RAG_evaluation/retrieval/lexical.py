@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from time import perf_counter
+from typing import cast
 
 from kiwipiepy import Kiwi, Token
 from rank_bm25 import BM25Okapi
@@ -50,7 +51,7 @@ class BM25Retriever:
         texts = tuple(normalize(f'{doc.title}\n{doc.content}') for doc in documents)
         # 여기서 문서들이 흩어지지 않아서 나중에 다시 문서 id로 모을 필요 없다.
         tokens = tuple(
-            token_forms(kiwi.tokenize(text))
+            token_forms(cast(list[Token], kiwi.tokenize(text)))
             for text in texts
         )
 
