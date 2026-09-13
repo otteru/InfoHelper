@@ -13,3 +13,6 @@ test/mvp2/test.md
 
 # generated blog assets
 /docs/blog-assets/
+
+# 재생성 가능한 검색 결과와 평가 산출물
+/RAG_evaluation/artifacts/
