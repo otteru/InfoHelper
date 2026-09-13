@@ -176,6 +176,15 @@
   - `fixed1000_qwen1536_v1` run은 기존 ingestion과 동일하게 본문을 겹침 없이 Python 문자열 1,000자씩 나누고 `title: {title} | text: {chunk}`를 Qwen `qwen/qwen3-embedding-8b` 1,536차원으로 임베딩했다.
   - 로컬 Supabase에 4,681개 공고와 5,603개 청크를 저장했고 run은 `completed`다. 저장된 벡터의 차원은 모두 1,536이며, 원본 제목·청크와 실제 임베딩 입력의 불일치는 0건이다.
   - `1000-character-embedding.py`는 dry-run, 소량 실행, 실패 후 재개, batch size 옵션을 제공한다. 같은 run 재실행은 추가 API 호출 없이 종료한다. 다른 모델·차원·청킹은 새 run 이름으로 저장해야 한다.
+- [x] Dense·BM25·Hybrid 검색 구현 및 사용자 코드 파악 완료 (2026-09-13)
+  - Dense와 BM25는 공고 단위 `(doc_id, score)`를 반환하고 `collect_results()`와 run/manifest 저장을 공유한다.
+  - `hybrid.py`는 저장된 Dense·BM25 run을 `query_id`로 연결해 동일 가중치 RRF로 결합한다. 기본값은 후보/최종 top-k=20, 순위 보정 상수 rrf-k=60이며 동점은 doc_id 오름차순이다.
+  - Hybrid는 API·DB 호출 없이 원본 run의 manifest 상태, corpus·query·결과 해시, 건수, ID와 순위를 검증한 뒤 결합한다. 출력 manifest의 `source_runs`에는 두 원본 run·manifest 해시를 기록한다.
+  - 사용자가 `python RAG_evaluation/retrieval/hybrid.py`를 실행해 `hybrid_rrf60_v1`을 저장했다. 생성 시각은 2026-09-13 18:57:22 KST다.
+  - 실시간 `hybrid_rrf60_v1`과 과거 Dense·BM25 run 기반 RRF가 32/80 쿼리에서 달랐다. 원인은 쿼리 임베딩이 호출마다 달라질 수 있기 때문이다. 같은 벡터의 DB 검색은 재현됐지만, OpenRouter 제공자를 DeepInfra로 고정하고 fallback을 차단해도 일부 임베딩 벡터·Dense 순위가 변했다.
+  - 새 기본 실행 이름은 `hybrid_rrf60_saved_v1`이며, 같은 저장 run과 설정으로 두 번 실행해 1,600행 JSONL이 완전히 일치하는 것을 검증했다. 검색·Hybrid 테스트는 24개 통과했다.
+  - 세 run의 `(query_id, doc_id)` 합집합은 3,022건으로 기존 두 run과 같다. 동일 후보 깊이의 RRF는 독립적인 새 후보 공급원이 아니므로 세 run이라는 이유만으로 pool 다양성이 늘었다고 표현하지 않는다.
+  - 풀링·라벨링·qrels는 아직 생성하지 않았다.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -192,9 +201,9 @@
 
 ## 다음에 해야 할 작업
 
-1. `RAG_evaluation/retrieval/dense.py`에 완료된 run을 한정한 Dense top 20 검색을 구현한다. 쿼리는 `text: {query}` 형식으로 같은 model/dimensions를 사용하고, 청크 점수는 공고별 최대값으로 합친다.
-2. `RAG_evaluation/retrieval/lexical.py`에 동일 corpus 4,681건을 쓰는 BM25 top 20 검색을 구현한다.
-3. 두 run을 합쳐 `query_id + doc_id` 기준의 TREC pool을 만들고, 라벨링 파일과 qrels를 작성한다.
+1. `hybrid_rrf60_saved_v1`을 실제 artifacts에 생성하고 manifest의 `source_runs` 해시를 확인한다. 이미 존재하면 새 `--run-name`을 사용한다.
+2. 풀링 후보 다양성을 결정한다. Dense·BM25의 합집합은 3,022건이며 파일 기반 Hybrid는 같은 후보의 순위만 바꾼다. 필요하면 더 깊은 후보 검색 또는 다른 검색기를 검토한다. corpus의 공백 제거 후 50자 미만 문서 66건과 기존 정제 기준의 불일치도 확인한다. 기존 임베딩과 해시가 연결되므로 corpus를 임의로 덮어쓰지 않는다.
+3. 확정한 run을 `query_id + doc_id` 기준으로 중복 제거해 TREC pool을 만들고, 라벨링 기준·파일과 qrels를 작성한다.
 4. Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간 벤치마크를 구현한 뒤 baseline을 기록한다.
 5. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
 6. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
@@ -287,6 +296,14 @@ users 1 ── N subscriptions N ── 1 sources
 
 ## 관련 파일
 
+- `RAG_evaluation/retrieval/common.py` - 검색 공통 입력 검증과 run/manifest 저장
+- `RAG_evaluation/retrieval/dense.py` - 평가 임베딩 run 검증 및 Dense 검색
+- `RAG_evaluation/retrieval/lexical.py` - Kiwi 기반 BM25 검색
+- `RAG_evaluation/retrieval/hybrid.py` - 저장된 Dense·BM25 run 검증 및 RRF 융합
+- `RAG_evaluation/retrieval/README.md` - 검색 실행 옵션과 산출물 안내
+- `test/rag_evaluation/test_retrieval.py`, `test/rag_evaluation/test_hybrid.py` - 검색·저장·RRF 테스트
+- `RAG_evaluation/artifacts/zighang_v1/` - 세 검색 run과 manifests (Git 제외)
+
 - `app/main.py` - FastAPI 애플리케이션 진입점
 - `app/api/router.py` - API v1 라우터 조립
 - `app/api/endpoints/sources.py` - Source 등록 엔드포인트와 Repository 주입
@@ -328,9 +345,9 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/rag-eval-dataset`
-- 마지막 커밋: `4e1480d feat: 평가 corpus 임베딩 기반 구성`
-- 평가용 DB migration, 임베딩 실행기, 테스트, HANDOFF 갱신을 위 커밋에 포함했다. 빈 `RAG_evaluation/retrieval/` 디렉터리는 Dense/BM25 구현 전이라 추적하지 않는다.
-- 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
+- 마지막 커밋: `7ad1c82 fix: BM25 토큰화 타입 명시`
+- Dense/BM25 검색과 RPC는 커밋됐다. Hybrid 파일 기반 융합·테스트, retrieval README 및 이번 HANDOFF 갱신은 이번 커밋 대상이다. 브랜치는 origin보다 4커밋 앞서 있다.
+- 이전 임베딩 단계 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
 - 재개 curl:
 
@@ -344,4 +361,5 @@ curl --max-time 300 \
   }'
 ```
 
-- 다음 세션 시작: `docs/HANDOFF.md 읽고 완료된 fixed1000_qwen1536_v1 run으로 Dense/BM25 top 20을 구현하고 TREC pooling을 이어서 진행해줘`
+- 최신 검증: 검색·Hybrid 테스트 24개 통과. 파일 기반 Hybrid를 임시 출력 위치에서 두 번 실행해 80쿼리·1,600행·독립 RRF 계산과 JSONL 완전 일치를 확인했다.
+- 다음 세션 시작: `docs/HANDOFF.md 읽고 hybrid_rrf60_saved_v1을 artifacts에 생성·검증한 다음 TREC pooling·라벨링 단계를 이어서 진행해줘`

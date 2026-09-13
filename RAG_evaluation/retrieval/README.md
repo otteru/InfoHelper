@@ -9,6 +9,7 @@ supabase migration up --local
 
 python RAG_evaluation/retrieval/dense.py
 python RAG_evaluation/retrieval/lexical.py
+python RAG_evaluation/retrieval/hybrid.py
 ```
 
 기본 입력은 정제된 `dataset/zighang/corpus.jsonl`과
@@ -43,6 +44,20 @@ run의 모델·차원·query_template을 읽으므로 설정을 검색 코드에
 두 검색기 모두 동점은 `doc_id` 오름차순이다. BM25의 일치 토큰이 없어도
 풀링 후보 확보를 위해 0점 결과를 포함한다. 이때 후보가 반환됐다고 관련 공고가
 존재한다는 뜻은 아니다. 최종 관련도는 별도로 판정해야 한다.
+
+## Hybrid (RRF)
+
+- 저장된 Dense·BM25 run을 `query_id`로 연결해 `1 / (rrf_k + rank)`를 합산한다.
+- API·DB 호출 없이 실행한다. `.env` 및 Kiwi 색인은 필요하지 않다.
+- 기본값은 `--rrf-k 60 --top-k 20`이며 동점은 공고 ID 오름차순이다.
+- 각 원본에서 top-k까지만 사용한다. 요청한 top-k가 원본 깊이보다 크면 거절한다.
+- `--input-dir` 기본값은 `RAG_evaluation/artifacts`이며 그 아래 corpus-version의 runs/manifests를 읽는다.
+- `--dense-run-name dense_fixed1000_qwen1536_v1`, `--bm25-run-name bm25_kiwi_v1`으로 원본을 선택한다.
+- 완료 상태, corpus·쿼리 해시, 결과 해시·건수·순위·ID를 검증한 뒤 결합한다.
+- 출력 manifest의 `source_runs`에 원본 run과 manifest 해시를 기록한다.
+- 기본 결과 이름은 `hybrid_rrf60_saved_v1`이다. 기존 실시간 검색 결과 `hybrid_rrf60_v1`은 보존한다.
+- 같은 입력과 설정이면 결과 JSONL이 동일하다. 재실행 시 새 `--run-name`을 지정한다.
+- 두 top 20의 부분집합을 반환하므로 기존 두 run의 pool에 새 후보를 추가하지 않는다.
 
 ## 저장 구조
 
