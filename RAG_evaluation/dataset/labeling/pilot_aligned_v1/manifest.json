@@ -1,0 +1,28 @@
+{
+  "dataset_version": "pilot_aligned_v1",
+  "count": 120,
+  "status_counts": {
+    "original_agreement": 93,
+    "human_confirmed": 10,
+    "assistant_proposed": 17
+  },
+  "score_scale": [
+    0,
+    1,
+    2
+  ],
+  "score_counts": {
+    "2": 30,
+    "1": 11,
+    "0": 79
+  },
+  "all_human_confirmed": false,
+  "source_hashes": {
+    "RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/pilot.json": "a4bd2d67d20d280ac7782ad7719c06c1cfe4eb89b504a9b557430a942746a946",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/llm_blind_v1/agent_comparison.json": "e95f03e96ba0d97a53b72a88f792639ad90ebf77485a50ddc6b24928c524d68d",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/remaining22_review.md": "1a69ba6d28d9b538c2603bf609257627d34cc09c3487a939a8fe92d3005bf115",
+    "docs/labeling-guidelines.md": "45533a8031bc5977e09d1f14628c35506dfbf0b5ffd45dbb1ababfb0866d280e"
+  },
+  "alignment_history_sha256": "e62bc72ffe238f8101427c7cf4368a9b44b64b8cc91ec4e9171309d270f3b513",
+  "data_sha256": "fb83625529c53f0c51a3550ccdd5e1db29d4babacbc3e478631a3243bbbda256"
+}

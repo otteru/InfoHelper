@@ -1,5 +1,14 @@
 # 작업 인계 문서
 
+## 최신 라벨링 인계 (2026-09-15)
+
+- 먼저 `docs/labeling-guidelines.md`를 읽는다. 합의 과정·일반 규칙·사용자 확정 사례·미정 사항을 모은 기준 문서 v1.0이다. 아래 과거 진행 기록보다 이 절이 우선한다.
+- 질문·고정 공고 전체·점수 세트는 `RAG_evaluation/dataset/labeling/pilot_aligned_v1/pairs.jsonl`, 출처 해시·건수는 같은 폴더의 `manifest.json`이다. artifacts 밖의 Git 추적 가능한 경로에 생성했다(커밋은 아직 하지 않음).
+- 점수 범위는 사용자 정정에 따라 0·1·2 유지. 120건의 현재 분포는 0점 79, 1점 11, 2점 30이다. 최초 일치 93건, 후속 사용자 확정 10건, assistant 제안 17건을 구분한다. 17건은 최종 사용자 합의로 간주하지 않는다.
+- 웹에서 큰 불일치 5건 합의 완료. 이후 대화로 코웨이 2, PTKOREA 0, Security Lead 2, 교대근무 네트워크 1, 신한은행 아키텍트 2를 확정했다. 자세한 근거와 일반화 범위는 기준 문서에 있다.
+- 다음 작업은 17건 제안 상태 정리와 미정 기준 확인 후 별도 표본 검증이다. 기존 120건의 독립 평가를 반복할 단계가 아니다. 원래 사람 DB·에이전트 평가 결과는 보존한다.
+- 재생성: `conda run --no-capture-output -n infohelper python RAG_evaluation/labeling/export_aligned.py`. 원본 artifacts가 필요하며 기존 버전과 내용이 다르면 덮어쓰기를 거부한다.
+
 ## 완료된 작업
 
 - [x] 기존 AI 배치 서비스 구현·배포
@@ -184,7 +193,12 @@
   - 실시간 `hybrid_rrf60_v1`과 과거 Dense·BM25 run 기반 RRF가 32/80 쿼리에서 달랐다. 원인은 쿼리 임베딩이 호출마다 달라질 수 있기 때문이다. 같은 벡터의 DB 검색은 재현됐지만, OpenRouter 제공자를 DeepInfra로 고정하고 fallback을 차단해도 일부 임베딩 벡터·Dense 순위가 변했다.
   - 새 기본 실행 이름은 `hybrid_rrf60_saved_v1`이며, 같은 저장 run과 설정으로 두 번 실행해 1,600행 JSONL이 완전히 일치하는 것을 검증했다. 검색·Hybrid 테스트는 24개 통과했다.
   - 세 run의 `(query_id, doc_id)` 합집합은 3,022건으로 기존 두 run과 같다. 동일 후보 깊이의 RRF는 독립적인 새 후보 공급원이 아니므로 세 run이라는 이유만으로 pool 다양성이 늘었다고 표현하지 않는다.
-  - 풀링·라벨링·qrels는 아직 생성하지 않았다.
+  - `hybrid_rrf60_saved_v1`은 artifacts에 생성돼 있고 manifest의 Dense·BM25 source run/manifest 해시가 기록돼 있다. 80쿼리·1,600행이다.
+  - Dense·BM25 top-20 합집합에서 유형별 20쌍씩 120쌍을 고정 시드로 뽑았다. 80개 쿼리를 모두 포함하며, 원문과 원본 파일 해시는 `labeling_pilot_v1/pilot.json`에 고정했다.
+  - 로컬 웹 라벨링 화면에서 유담님이 120건 모두 판정했다. 결과는 2점 38건, 1점 11건, 0점 71건이며 보류·미평가는 0건이다. `pilot.qrels`은 확정된 파일럿 120건을 `query_id 0 doc_id relevance` 형식으로 저장한다.
+  - 사람 점수·메모·쿼리 유형·검색 순위를 제외한 질문·공고 제목·본문·선택 메타데이터만 대화 이력이 없는 독립 하위 에이전트에 제공해 120건을 직접 판정했다. 사람과 93/120(77.5%) 일치, Cohen kappa 0.588이다. 유형별 일치는 entity-heavy 90%, no-match 95%, ambiguous 85%, keyword 80%, semantic 60%, constraint-heavy 55%다.
+  - 큰 불일치(0↔2)는 5건이다. 보안 직무의 범위, 신입 전용과 신입·경력 공동 채용, 경력 최소 연수, `9월 14일 이전`의 당일 포함 여부가 핵심 원인이다. 사람 라벨은 변경하지 않았다.
+  - 파일럿은 전체 3,022건 pool이나 검색 성능을 대표하지 않는다. 자동 라벨링을 확대하기 전에 필수 조건·정보 부족·부분 관련의 기준을 보완하고 새 holdout 표본으로 재검증해야 한다.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -201,13 +215,14 @@
 
 ## 다음에 해야 할 작업
 
-1. `hybrid_rrf60_saved_v1`을 실제 artifacts에 생성하고 manifest의 `source_runs` 해시를 확인한다. 이미 존재하면 새 `--run-name`을 사용한다.
-2. 풀링 후보 다양성을 결정한다. Dense·BM25의 합집합은 3,022건이며 파일 기반 Hybrid는 같은 후보의 순위만 바꾼다. 필요하면 더 깊은 후보 검색 또는 다른 검색기를 검토한다. corpus의 공백 제거 후 50자 미만 문서 66건과 기존 정제 기준의 불일치도 확인한다. 기존 임베딩과 해시가 연결되므로 corpus를 임의로 덮어쓰지 않는다.
-3. 확정한 run을 `query_id + doc_id` 기준으로 중복 제거해 TREC pool을 만들고, 라벨링 기준·파일과 qrels를 작성한다.
-4. Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간 벤치마크를 구현한 뒤 baseline을 기록한다.
-5. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
-6. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
-7. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
+1. 파일럿의 큰 불일치 5건과 constraint-heavy·semantic 불일치를 검토해 라벨링 규칙을 확정한다. 특히 `신입만`, 날짜 경계, 메타데이터/본문 충돌, 키워드 언급과 실제 직무의 구분을 명문화한다.
+2. 확정 규칙으로 새 holdout 표본을 만들어 독립 판정과 다시 비교한다. 파일럿에 기준을 맞춘 뒤 같은 120건의 일치율만 개선됐다고 평가하지 않는다.
+3. 더 깊은 Dense·BM25 후보 또는 새로운 검색기를 결정해 전체 `(query_id, doc_id)` pool을 만든다. 현재 top-20 합집합은 3,022건이고 Hybrid는 새 후보를 추가하지 않는다. corpus의 공백 제거 후 50자 미만 문서 66건과 기존 정제 기준의 불일치도 확인한다. 기존 임베딩과 해시가 연결되므로 corpus를 임의로 덮어쓰지 않는다.
+4. 확정 pool을 라벨링해 최종 qrels를 작성한다. 파일럿 qrels 120건은 자동 라벨링 기준 검증용이며 최종 검색 평가지표용 qrels가 아니다.
+5. Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간 벤치마크를 구현한 뒤 baseline을 기록한다.
+6. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
+7. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
+8. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
 
@@ -303,6 +318,13 @@ users 1 ── N subscriptions N ── 1 sources
 - `RAG_evaluation/retrieval/README.md` - 검색 실행 옵션과 산출물 안내
 - `test/rag_evaluation/test_retrieval.py`, `test/rag_evaluation/test_hybrid.py` - 검색·저장·RRF 테스트
 - `RAG_evaluation/artifacts/zighang_v1/` - 세 검색 run과 manifests (Git 제외)
+- `RAG_evaluation/labeling/app.py` - 파일럿 후보를 고정하고 로컬 라벨링 API·SQLite 저장을 제공
+- `RAG_evaluation/labeling/index.html` - 0·1·2·보류 평가 화면과 다운로드 UI
+- `RAG_evaluation/labeling/compare_agent.py` - 독립 에이전트 판정과 사람 `pilot.json`·`pilot.qrels`를 검증·비교
+- `RAG_evaluation/labeling/README.md` - 로컬 라벨링 실행·점수 기준·산출물 규칙
+- `test/rag_evaluation/test_labeling.py` - 120개 표본 구성, 저장·수정·재개·내보내기 테스트
+- `RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/pilot.json` - 고정 120쌍과 원본 해시 (Git 제외)
+- `RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/llm_blind_v1/agent_report.md` - 독립 에이전트와 사람 판정 비교 보고서 (Git 제외)
 
 - `app/main.py` - FastAPI 애플리케이션 진입점
 - `app/api/router.py` - API v1 라우터 조립
@@ -345,8 +367,8 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/rag-eval-dataset`
-- 마지막 커밋: `7ad1c82 fix: BM25 토큰화 타입 명시`
-- Dense/BM25 검색과 RPC는 커밋됐다. Hybrid 파일 기반 융합·테스트, retrieval README 및 이번 HANDOFF 갱신은 이번 커밋 대상이다. 브랜치는 origin보다 4커밋 앞서 있다.
+- 마지막 커밋: `7f7e716 feat: 저장된 검색 결과 기반 Hybrid RRF 구성`
+- 미커밋 파일: `RAG_evaluation/labeling/`와 `test/rag_evaluation/test_labeling.py`는 새 파일이다. artifacts는 `.gitignore`로 제외된다. `docs/HANDOFF.md`도 이번 세션에서 갱신했다.
 - 이전 임베딩 단계 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
 - 재개 curl:
@@ -361,5 +383,5 @@ curl --max-time 300 \
   }'
 ```
 
-- 최신 검증: 검색·Hybrid 테스트 24개 통과. 파일 기반 Hybrid를 임시 출력 위치에서 두 번 실행해 80쿼리·1,600행·독립 RRF 계산과 JSONL 완전 일치를 확인했다.
-- 다음 세션 시작: `docs/HANDOFF.md 읽고 hybrid_rrf60_saved_v1을 artifacts에 생성·검증한 다음 TREC pooling·라벨링 단계를 이어서 진행해줘`
+- 최신 검증: 검색·Hybrid 테스트 24개 통과. 파일 기반 Hybrid를 임시 출력 위치에서 두 번 실행해 80쿼리·1,600행·독립 RRF 계산과 JSONL 완전 일치를 확인했다. 라벨링 테스트는 `pytest test/rag_evaluation/test_labeling.py -q`로 2개 통과했다(Requests 의존성·Starlette TestClient deprecation 경고는 남음). 독립 판정 비교는 120개의 고유 ID, 점수 범위, 사람 JSON과 qrels 일치를 검증했다.
+- 다음 세션 시작: `docs/HANDOFF.md`와 `RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/llm_blind_v1/agent_report.md`를 읽고, 큰 불일치와 다중 조건·의미형 쿼리의 라벨링 기준부터 확정한 뒤 별도 holdout 검증을 진행해줘.
