@@ -1,13 +1,22 @@
 # 작업 인계 문서
 
-## 최신 라벨링 인계 (2026-09-15)
+## 최신 라벨링 인계 (2026-09-17)
 
-- 먼저 `docs/labeling-guidelines.md`를 읽는다. 합의 과정·일반 규칙·사용자 확정 사례·미정 사항을 모은 기준 문서 v1.0이다. 아래 과거 진행 기록보다 이 절이 우선한다.
-- 질문·고정 공고 전체·점수 세트는 `RAG_evaluation/dataset/labeling/pilot_aligned_v1/pairs.jsonl`, 출처 해시·건수는 같은 폴더의 `manifest.json`이다. artifacts 밖의 Git 추적 가능한 경로에 생성했다(커밋은 아직 하지 않음).
-- 점수 범위는 사용자 정정에 따라 0·1·2 유지. 120건의 현재 분포는 0점 79, 1점 11, 2점 30이다. 최초 일치 93건, 후속 사용자 확정 10건, assistant 제안 17건을 구분한다. 17건은 최종 사용자 합의로 간주하지 않는다.
-- 웹에서 큰 불일치 5건 합의 완료. 이후 대화로 코웨이 2, PTKOREA 0, Security Lead 2, 교대근무 네트워크 1, 신한은행 아키텍트 2를 확정했다. 자세한 근거와 일반화 범위는 기준 문서에 있다.
-- 다음 작업은 17건 제안 상태 정리와 미정 기준 확인 후 별도 표본 검증이다. 기존 120건의 독립 평가를 반복할 단계가 아니다. 원래 사람 DB·에이전트 평가 결과는 보존한다.
-- 재생성: `conda run --no-capture-output -n infohelper python RAG_evaluation/labeling/export_aligned.py`. 원본 artifacts가 필요하며 기존 버전과 내용이 다르면 덮어쓰기를 거부한다.
+아래 과거 진행 기록보다 이 절이 우선한다. 파일럿·holdout·1차 검수 원점수는 다시 채점하지 않는다. artifacts sqlite와 Grok 산출물은 삭제하지 않는다.
+
+- 기준: `docs/labeling-guidelines.md` v1.4. 점수 0·1·2, 기준일 2026-09-07.
+- **검색 평가용 합본:** `RAG_evaluation/dataset/labeling/pool_v1/`
+  - `qrels.txt`, `judgments.jsonl`, `manifest.json`
+  - 3,022쌍. 공고 원문 없음. `all_human_confirmed=false`
+  - 점수: 0점 2,051 / 1점 196 / 2점 775
+  - 출처: 파일럿 사람 120, holdout 사람 120, 1차 검수 사람 129, 1차 검수 에이전트 224, Grok 자동 2,429
+- 재생성: `/opt/miniconda3/envs/infohelper/bin/python RAG_evaluation/labeling/export_pool.py`. 기존 `pool_v1`과 내용이 다르면 덮어쓰기를 거부한다.
+- 감사 50(`/audit`)은 화면으로만 훑었고 버튼을 안 눌러 `pool_v1`에 넣지 않았다.
+- R7: 직무 질의는 메인이어야 2, 기술 질의는 실사용이면 메인 아니어도 2. 남은 검수 224에만 적용했고 파일럿·holdout은 이 규칙으로 재채점하지 않았다.
+- 라벨 웹은 꺼 둔 상태다. 다시 켜려면 `python -m uvicorn RAG_evaluation.labeling.app:app --host 127.0.0.1 --port 8765`. `/` 파일럿, `/holdout`, `/review` 353, `/audit` 50, `/holdout-align`.
+- GitHub: `dataset/corpus.jsonl`과 `dataset/queries/`는 공개 평가 입력이다. `artifacts/`와 `dataset/zighang/` 수집 원본·DB는 올리지 않는다. 올려도 되는 것은 라벨링 코드·테스트·기준 문서·`pilot_aligned_v2`·`pool_v1`. `compare_agent.py`는 Downloads 경로, `first_pass.py`는 Gemini용이므로 고치기 전엔 커밋하지 않는 편이 낫다.
+
+다음 세션: `pool_v1/qrels.txt`로 nDCG@10 / Recall@10 / MRR@10 벤치마크를 구현하고 Dense·BM25·Hybrid baseline을 기록한다. 3,022 재라벨은 하지 않는다.
 
 ## 완료된 작업
 
@@ -198,7 +207,8 @@
   - 로컬 웹 라벨링 화면에서 유담님이 120건 모두 판정했다. 결과는 2점 38건, 1점 11건, 0점 71건이며 보류·미평가는 0건이다. `pilot.qrels`은 확정된 파일럿 120건을 `query_id 0 doc_id relevance` 형식으로 저장한다.
   - 사람 점수·메모·쿼리 유형·검색 순위를 제외한 질문·공고 제목·본문·선택 메타데이터만 대화 이력이 없는 독립 하위 에이전트에 제공해 120건을 직접 판정했다. 사람과 93/120(77.5%) 일치, Cohen kappa 0.588이다. 유형별 일치는 entity-heavy 90%, no-match 95%, ambiguous 85%, keyword 80%, semantic 60%, constraint-heavy 55%다.
   - 큰 불일치(0↔2)는 5건이다. 보안 직무의 범위, 신입 전용과 신입·경력 공동 채용, 경력 최소 연수, `9월 14일 이전`의 당일 포함 여부가 핵심 원인이다. 사람 라벨은 변경하지 않았다.
-  - 파일럿은 전체 3,022건 pool이나 검색 성능을 대표하지 않는다. 자동 라벨링을 확대하기 전에 필수 조건·정보 부족·부분 관련의 기준을 보완하고 새 holdout 표본으로 재검증해야 한다.
+  - 파일럿 120·holdout 120·1차 2782 라벨이 끝났고 합본은 `dataset/labeling/pool_v1/`이다. 사람 전수 확정은 아니다.
+  - 라벨링 UI: `/` 파일럿, `/holdout`, `/review`, `/audit`, `/holdout-align`. 서버는 종료됨.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -210,19 +220,17 @@
   - `users`, `subscriptions`, `user_preferences`, `recommendation_feedback`를 최소 범위로 구성할 예정이다
 - [ ] RAG 딥다이브 준비
   - 현재 1,000자 고정 청킹, Dense Search, 유사도 0.65, 자체 점수 공식을 Baseline으로 고정한다
-  - 실제 공지와 사용자 프로필에 relevance 정답을 붙인 평가 데이터셋은 아직 없다
+  - 직행 채용 pool 3,022 qrels는 `dataset/labeling/pool_v1/`에 있다. 건국대 공지·사용자 프로필 정답은 없다.
   - Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간을 기준으로 개선안을 비교할 예정이다
 
 ## 다음에 해야 할 작업
 
-1. 파일럿의 큰 불일치 5건과 constraint-heavy·semantic 불일치를 검토해 라벨링 규칙을 확정한다. 특히 `신입만`, 날짜 경계, 메타데이터/본문 충돌, 키워드 언급과 실제 직무의 구분을 명문화한다.
-2. 확정 규칙으로 새 holdout 표본을 만들어 독립 판정과 다시 비교한다. 파일럿에 기준을 맞춘 뒤 같은 120건의 일치율만 개선됐다고 평가하지 않는다.
-3. 더 깊은 Dense·BM25 후보 또는 새로운 검색기를 결정해 전체 `(query_id, doc_id)` pool을 만든다. 현재 top-20 합집합은 3,022건이고 Hybrid는 새 후보를 추가하지 않는다. corpus의 공백 제거 후 50자 미만 문서 66건과 기존 정제 기준의 불일치도 확인한다. 기존 임베딩과 해시가 연결되므로 corpus를 임의로 덮어쓰지 않는다.
-4. 확정 pool을 라벨링해 최종 qrels를 작성한다. 파일럿 qrels 120건은 자동 라벨링 기준 검증용이며 최종 검색 평가지표용 qrels가 아니다.
-5. Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간 벤치마크를 구현한 뒤 baseline을 기록한다.
-6. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
-7. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
-8. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
+1. `pool_v1/qrels.txt`로 nDCG@10, Recall@10, MRR@10 벤치마크를 구현하고 Dense·BM25·Hybrid baseline을 기록한다. 3,022 재라벨은 하지 않는다.
+2. 더 깊은 Dense·BM25 후보 또는 새 검색기를 넣을지는 벤치마크 이후에 결정한다. Hybrid는 현재 top-20에서 새 후보를 추가하지 않는다. corpus를 임의로 덮어쓰지 않는다.
+3. 라벨링 코드·`pilot_aligned_v2`·`pool_v1` GitHub 커밋은 사용자가 요청할 때만 한다. `dataset/corpus.jsonl`과 `dataset/queries/`는 포함하고, `artifacts/`와 `dataset/zighang/` 수집 원본·DB는 제외한다.
+4. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
+5. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
+6. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
 
@@ -318,13 +326,18 @@ users 1 ── N subscriptions N ── 1 sources
 - `RAG_evaluation/retrieval/README.md` - 검색 실행 옵션과 산출물 안내
 - `test/rag_evaluation/test_retrieval.py`, `test/rag_evaluation/test_hybrid.py` - 검색·저장·RRF 테스트
 - `RAG_evaluation/artifacts/zighang_v1/` - 세 검색 run과 manifests (Git 제외)
-- `RAG_evaluation/labeling/app.py` - 파일럿 후보를 고정하고 로컬 라벨링 API·SQLite 저장을 제공
-- `RAG_evaluation/labeling/index.html` - 0·1·2·보류 평가 화면과 다운로드 UI
-- `RAG_evaluation/labeling/compare_agent.py` - 독립 에이전트 판정과 사람 `pilot.json`·`pilot.qrels`를 검증·비교
-- `RAG_evaluation/labeling/README.md` - 로컬 라벨링 실행·점수 기준·산출물 규칙
-- `test/rag_evaluation/test_labeling.py` - 120개 표본 구성, 저장·수정·재개·내보내기 테스트
-- `RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/pilot.json` - 고정 120쌍과 원본 해시 (Git 제외)
-- `RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/llm_blind_v1/agent_report.md` - 독립 에이전트와 사람 판정 비교 보고서 (Git 제외)
+- `RAG_evaluation/labeling/app.py` - 파일럿·holdout·review·audit 라벨링 API
+- `RAG_evaluation/labeling/index.html` - `/` 파일럿, `/holdout`, `/review`, `/audit`
+- `RAG_evaluation/labeling/confirm.html` - 파일럿 제안 17건 확정. 끝남
+- `RAG_evaluation/labeling/export_confirmed.py` - `pilot_aligned_v2` 재생성
+- `RAG_evaluation/labeling/export_pool.py` - 3,022쌍 `pool_v1` 합본. 기존 파일 삭제 없음
+- `RAG_evaluation/labeling/compare_agent.py` - Downloads 절대경로. 커밋 전에 CLI로 고칠 것
+- `RAG_evaluation/labeling/first_pass.py` - Gemini 1차용. 실제 1차는 Grok 서브에이전트
+- `RAG_evaluation/labeling/README.md` - 로컬 라벨링 실행 안내
+- `test/rag_evaluation/test_labeling.py`, `test_first_pass.py`, `test_export_pool.py`
+- `RAG_evaluation/dataset/labeling/pilot_aligned_v2/` - 파일럿 확정 120
+- `RAG_evaluation/dataset/labeling/pool_v1/` - 검색 평가용 3,022 qrels
+- `RAG_evaluation/artifacts/zighang_v1/labeling_*` - sqlite·Grok 샤드 (Git 제외, 삭제 금지)
 
 - `app/main.py` - FastAPI 애플리케이션 진입점
 - `app/api/router.py` - API v1 라우터 조립
@@ -366,9 +379,9 @@ users 1 ── N subscriptions N ── 1 sources
 
 ## 마지막 상태
 
-- 브랜치: `feat/rag-eval-dataset`
-- 마지막 커밋: `7f7e716 feat: 저장된 검색 결과 기반 Hybrid RRF 구성`
-- 미커밋 파일: `RAG_evaluation/labeling/`와 `test/rag_evaluation/test_labeling.py`는 새 파일이다. artifacts는 `.gitignore`로 제외된다. `docs/HANDOFF.md`도 이번 세션에서 갱신했다.
+- 브랜치: `feat/rag-eval-dataset` (origin보다 1 커밋 ahead)
+- 마지막 커밋: `7fda3a8 feat: 라벨링 파일럿 기준 및 데이터셋 추가`
+- `RAG_evaluation/artifacts/`와 `dataset/zighang/`는 gitignore. 미커밋: 라벨링 UI·export_pool·`pilot_aligned_v2`·`pool_v1`·기준 v1.4·테스트. 커밋은 사용자가 요청하기 전에는 하지 않는다.
 - 이전 임베딩 단계 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
 - 재개 curl:
@@ -383,5 +396,5 @@ curl --max-time 300 \
   }'
 ```
 
-- 최신 검증: 검색·Hybrid 테스트 24개 통과. 파일 기반 Hybrid를 임시 출력 위치에서 두 번 실행해 80쿼리·1,600행·독립 RRF 계산과 JSONL 완전 일치를 확인했다. 라벨링 테스트는 `pytest test/rag_evaluation/test_labeling.py -q`로 2개 통과했다(Requests 의존성·Starlette TestClient deprecation 경고는 남음). 독립 판정 비교는 120개의 고유 ID, 점수 범위, 사람 JSON과 qrels 일치를 검증했다.
-- 다음 세션 시작: `docs/HANDOFF.md`와 `RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/llm_blind_v1/agent_report.md`를 읽고, 큰 불일치와 다중 조건·의미형 쿼리의 라벨링 기준부터 확정한 뒤 별도 holdout 검증을 진행해줘.
+- 최신 검증: `pytest test/rag_evaluation/test_export_pool.py -q` 2개 통과. `pool_v1` 3,022쌍. 검색·Hybrid 테스트 24개는 이전에 통과했다.
+- 다음 세션: 이 절과 `docs/labeling-guidelines.md` v1.4, `RAG_evaluation/dataset/labeling/pool_v1/manifest.json`을 읽고 `qrels.txt`로 Dense·BM25·Hybrid baseline 벤치마크를 구현한다. 3,022 재라벨은 하지 않는다.
