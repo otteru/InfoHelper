@@ -1,0 +1,36 @@
+{
+  "dataset_version": "pool_v1",
+  "count": 3022,
+  "score_scale": [
+    0,
+    1,
+    2
+  ],
+  "score_counts": {
+    "1": 196,
+    "2": 775,
+    "0": 2051
+  },
+  "source_counts": {
+    "human_pilot": 120,
+    "grok_first_pass": 2429,
+    "human_review": 129,
+    "human_holdout": 120,
+    "assistant_review": 224
+  },
+  "all_human_confirmed": false,
+  "audit_50_applied": false,
+  "note": "감사 50건은 화면 확인만 하고 버튼 저장을 하지 않아 반영하지 않았다. 기존 artifacts와 파일럿 파일은 삭제하지 않았다.",
+  "source_hashes": {
+    "RAG_evaluation/dataset/labeling/pilot_aligned_v2/pairs.jsonl": "e6022dc41c17729f884f6d6a61ec332937327af660044a8d3b968ec54202f66d",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_holdout_v1/holdout.json": "c4004b7ee4c6d58788b2cf330163d805f9643f703e3fce0b8f5e297fcbf9b3a3",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_holdout_v1/labels.sqlite3": "614c5b060a9a17f74142840ce3e512aeb261e1a2c73fa808dc0704e6efb4c619",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_first_pass_v1/remaining.jsonl": "d1ff31666403e59a3a503184e99e5fa1b07aa343215aff39cebed1ca0353cc22",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_first_pass_v1/grok_v1/judgments.jsonl": "694e54358a7357c7c06d8a3f9d3f11371b00d3b05858cc2061b3e41efe611e14",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_first_pass_v1/review.sqlite3": "8fa9a51bddb950c04efb7e628678f886c171353e45989942027d69f751588d94",
+    "docs/labeling-guidelines.md": "32869728d4933b5405cfe06a12cca9b8afba2a6ecfccadce66fc6865cae3b162",
+    "RAG_evaluation/artifacts/zighang_v1/runs/dense_fixed1000_qwen1536_v1.jsonl": "1ddb52bd07dd7731d9318578091d8b14872809bbf3a35d89a9a425ff3ab7fddc",
+    "RAG_evaluation/artifacts/zighang_v1/runs/bm25_kiwi_v1.jsonl": "f776a012cce5506e75bbd60b3ecd622d28031a672e959c19e3c4f331bc656ddf"
+  },
+  "data_sha256": "27c5968a4b826f8cd112d09702fe6072eddc6024973b3d5a0dc51785a20e9519"
+}

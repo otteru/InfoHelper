@@ -1,0 +1,80 @@
+{"query_id":"Q001","type":"keyword","query":"MLOps","intent":"MLOps 키워드가 제목/키워드/본문에 있는 공고","tags":[],"notes":"고유 토큰 1개. 코퍼스 keywords에 MLOps 32건, 본문 포함 73건 수준. 너무 넓지 않음.","seed_hints":["MLOps","ML Ops","엠엘옵스"]}
+{"query_id":"Q002","type":"keyword","query":"React Native","intent":"React Native 앱 개발 공고","tags":[],"notes":"코퍼스 RN 언급 약 43건. 단순 React와 구분되어야 함.","seed_hints":["React Native","리액트 네이티브"]}
+{"query_id":"Q003","type":"keyword","query":"GIS 개발","intent":"GIS/지도 개발 포지션","tags":[],"notes":"희소 키워드(약 12건). BM25가 유리.","seed_hints":["GIS","OpenLayers","지도 개발"]}
+{"query_id":"Q004","type":"keyword","query":"SAP ABAP","intent":"SAP ABAP 개발/운영","tags":[],"notes":"ERP_SAP 174건 중 ABAP 중심만. SAP 컨설팅과 구분.","seed_hints":["ABAP","SAP CO","비즈테크아이"]}
+{"query_id":"Q005","type":"keyword","query":"정보보안기사","intent":"정보보안기사 자격 요구/우대 공고","tags":[],"notes":"자격증명 어휘 일치. CISSP와 혼동되면 안 됨.","seed_hints":["정보보안기사","정보보안"]}
+{"query_id":"Q006","type":"keyword","query":"펌웨어","intent":"펌웨어/임베디드 FW 개발","tags":[],"notes":"임베디드 계열은 많지만 '펌웨어' 토큰 자체 매칭.","seed_hints":["FW개발","펌웨어","임베디드"]}
+{"query_id":"Q007","type":"keyword","query":"CCNP","intent":"CCNP 자격/역량 요구 네트워크 공고","tags":[],"notes":"약 43건. CISCO 일반 공고와 구분.","seed_hints":["CCNP","CISCO"]}
+{"query_id":"Q008","type":"keyword","query":"블록체인","intent":"블록체인/웹3/크립토 인프라·개발","tags":[],"notes":"약 34건. 핀테크 일반과 구분.","seed_hints":["블록체인","스테이블코인","빗썸"]}
+{"query_id":"Q009","type":"keyword","query":"DBA","intent":"DBA/DBMS 관리 포지션","tags":[],"notes":"depthTwo DBA 67건. 백엔드+SQL과는 구분.","seed_hints":["DBA","DBMS 관리"]}
+{"query_id":"Q010","type":"keyword","query":"쿠버네티스","intent":"Kubernetes 운영/구축 공고","tags":["typo_variant_available"],"notes":"한글 표기 검색. k8s/Kubernetes 동의어는 Semantic이 담당.","seed_hints":["쿠버네티스","Kubernetes","k8s"]}
+{"query_id":"Q011","type":"keyword","query":"백앤드 채용","intent":"백엔드 채용. 오타 포함","tags":["typo"],"notes":"오타 내성 테스트. BM25는 '백엔드'와 어근이 다를 수 있음.","seed_hints":["백엔드","서버_백엔드"]}
+{"query_id":"Q012","type":"keyword","query":"리액트 네이티브 취준","intent":"RN 신입/취준 관점 검색","tags":["typo","colloquial"],"notes":"구어체+직무. 경력 공고가 상위면 Keyword 실패로 볼 수 있음.","seed_hints":["React Native","신입"]}
+{"query_id":"Q013","type":"semantic","query":"서비스 장애를 직접 대응하고 재발을 막는 일을 하고 싶다","intent":"SRE/온콜/장애대응/신뢰성 엔지니어링","tags":[],"notes":"SRE, 라이브사이트, 장애 완화, 관측성 공고가 정답 후보.","seed_hints":["SRE","온콜","장애","관측성"]}
+{"query_id":"Q014","type":"semantic","query":"주니어가 성장하기 좋은 개발 포지션","intent":"신입/경력무관/멘토링/교육 강조 개발직","tags":[],"notes":"careerMin=0 + 교육/멘토링 언급. '좋은 회사'처럼 너무 넓지 않게 직무는 개발로 고정.","seed_hints":["신입","멘토링","신입사원 교육"]}
+{"query_id":"Q015","type":"semantic","query":"클라우드에서 인프라를 코드로 관리하는 일","intent":"IaC/Terraform/Ansible/클라우드 인프라 엔지니어","tags":[],"notes":"키워드에 Terraform이 없어도 의미가 같은 공고가 정답.","seed_hints":["Terraform","인프라 코드","클라우드"]}
+{"query_id":"Q016","type":"semantic","query":"사용자 화면을 만들고 웹 성능을 개선하는 일","intent":"프론트엔드/웹 UI 엔지니어","tags":[],"notes":"'프론트엔드' 단어가 없어도 React/Vue UI 공고가 잡혀야 함.","seed_hints":["프론트엔드","React","Vue"]}
+{"query_id":"Q017","type":"semantic","query":"칩이나 장비 가까이에서 C로 돌아가는 소프트웨어를 만들고 싶다","intent":"임베디드/펌웨어/MCU/HW 인접 SW","tags":[],"notes":"Semantic 전형. 응용 웹개발과 구분.","seed_hints":["임베디드","펌웨어","MCU","ARM"]}
+{"query_id":"Q018","type":"semantic","query":"회사 데이터를 모아서 분석할 수 있게 파이프라인을 만드는 일","intent":"데이터 엔지니어/ETL/데이터 플랫폼","tags":[],"notes":"데이터분석가/과학자보다 파이프라인·적재 쪽이 정답.","seed_hints":["데이터엔지니어","파이프라인","ETL"]}
+{"query_id":"Q019","type":"semantic","query":"배포 자동화를 만들고 개발팀이 자주 안전하게 올리는 환경을 만들고 싶다","intent":"DevOps/CI/CD/플랫폼 엔지니어","tags":[],"notes":"백엔드 개발과 혼동 주의.","seed_hints":["CI/CD","DevOps","배포자동화"]}
+{"query_id":"Q020","type":"semantic","query":"해킹이나 침해를 막거나 사고 난 뒤 원인 찾는 보안 일","intent":"침해대응/모의해킹/보안관제/포렌식","tags":[],"notes":"방화벽 단순 운영과 침해대응을 구분해서 라벨링.","seed_hints":["침해대응","모의해킹","보안관제","포렌식"]}
+{"query_id":"Q021","type":"semantic","query":"앱스토어에 나가는 모바일 앱을 만드는 개발자","intent":"Android/iOS/크로스플랫폼 앱 개발","tags":[],"notes":"웹 프론트와 구분.","seed_hints":["안드로이드","iOS","AoS","앱개발"]}
+{"query_id":"Q022","type":"semantic","query":"기존 시스템을 유지보수하면서 작은 기능을 계속 넣는 SI 운영 일","intent":"SM/운영개발/레거시 유지보수","tags":[],"notes":"신규 제품 개발과 구분.","seed_hints":["SM","운영","유지관리","SI"]}
+{"query_id":"Q023","type":"semantic","query":"생성형 AI를 제품에 붙이는 엔지니어 자리","intent":"GenAI 응용 개발/에이전트/LLM 앱","tags":[],"notes":"단순 'AI 관심' Ambiguous와 구분. 제품 적용이 핵심.","seed_hints":["생성형AI","에이전트","LLM","RAG"]}
+{"query_id":"Q024","type":"semantic","query":"테스트만 전문으로 하며 서비스 품질을 책임지는 자리","intent":"QA/테스트 엔지니어","tags":[],"notes":"개발자+테스트 겸임과 전업 QA를 구분.","seed_hints":["QA","테스트","자동화테스트"]}
+{"query_id":"Q025","type":"semantic","query":"은행이나 증권사 시스템을 만드는 개발 일","intent":"금융권 SI/SM, 증권·은행 IT","tags":[],"notes":"'금융' 키워드 없어도 증권/은행/카드 도메인 공고가 정답.","seed_hints":["금융","증권","은행","핀테크"]}
+{"query_id":"Q026","type":"semantic","query":"집에서 일하면서도 서버 개발을 하고 싶다","intent":"재택/원격 가능한 백엔드","tags":[],"notes":"Semantic+약한 제약. 본 타입은 재택 표현의 다양성 측정. 강한 AND는 Constraint로.","seed_hints":["재택가능","원격","백엔드"]}
+{"query_id":"Q027","type":"semantic","query":"큰 트래픽을 견디는 분산 서버를 설계하는 시니어 역할","intent":"시니어 백엔드/분산시스템/플랫폼","tags":[],"notes":"경력 연차 숫자보다 규모·분산 표현이 핵심.","seed_hints":["분산시스템","대규모 트래픽","시니어"]}
+{"query_id":"Q028","type":"semantic","query":"자동차 회사의 소프트웨어를 만드는 일","intent":"현대차/오토에버 등 모빌리티 SW","tags":[],"notes":"회사명 없이도 자동차/모빌리티 IT가  retrieva되어야 함.","seed_hints":["현대자동차","현대오토에버","자동차"]}
+{"query_id":"Q029","type":"constraint-heavy","query":"서울 정규직 경력 3년 이하 Java 백엔드","intent":"지역+고용형태+연차+스택+직무 AND","tags":[],"notes":"조건 5개. 경기/계약직/시니어/프론트는 2점 금지.","seed_hints":["서울","정규직","JAVA","서버_백엔드"]}
+{"query_id":"Q030","type":"constraint-heavy","query":"경기 임베디드 C/C++ 경력 4년 이상 정규직","intent":"지역+직무+언어+연차+고용형태","tags":[],"notes":"인천 펌웨어는 지역 불일치.","seed_hints":["경기","임베디드","C++"]}
+{"query_id":"Q031","type":"constraint-heavy","query":"부산 또는 경남 네트워크 유지보수 정규직","intent":"지방 네트워크 현장/유지보수","tags":[],"notes":"서울 NOC 공고는 오탐. 코퍼스 부산 41+경남 42.","seed_hints":["부산","경남","네트워크","유지보수"]}
+{"query_id":"Q032","type":"constraint-heavy","query":"재택 가능 프론트엔드 React 경력 무관","intent":"재택+프론트+React+신입가능","tags":["negation_soft"],"notes":"재택 미언급 React 공고는 부분관련(1) 이하.","seed_hints":["재택","React","프론트엔드"]}
+{"query_id":"Q033","type":"constraint-heavy","query":"계약직 Java Spring 금융권 서울","intent":"고용형태+스택+도메인+지역","tags":[],"notes":"정규직 금융 백엔드는 조건 실패. 오륜디지탈/여의도 SI류가 후보.","seed_hints":["계약직","JAVA","금융","서울"]}
+{"query_id":"Q034","type":"constraint-heavy","query":"신입만 지원 가능한 보안 QA","intent":"신입 전용 + 보안 + QA","tags":["negation"],"notes":"경력 보안엔지니어는 제외. 넷앤드 보안솔루션 QA 신입 등이 후보.","seed_hints":["신입","QA","보안"]}
+{"query_id":"Q035","type":"constraint-heavy","query":"대기업 말고 스타트업 백엔드 파이썬","intent":"부정 제약(대기업 제외)+직무+언어","tags":["negation"],"notes":"현대차/삼성/MS/JPMC는 제외. 회사 규모 판단이 애매하면 1점.","seed_hints":["Python","백엔드","스타트업"]}
+{"query_id":"Q036","type":"constraint-heavy","query":"이번 달 마감 신입 백엔드 서울","intent":"2026-09 마감 + 신입 + 백엔드 + 서울","tags":["temporal"],"notes":"오늘 기준 2026-09-07. 9월 마감만 temporal 충족. 상시/채용시마감은 실패.","seed_hints":["마감일","careerMin=0","서버_백엔드","서울"]}
+{"query_id":"Q037","type":"constraint-heavy","query":"채용시 마감인 해외 클라우드 개발","intent":"deadlineType=채용시마감 + 해외 + 클라우드","tags":["temporal"],"notes":"상시채용과 채용시마감을 구분해서 라벨. MS/JPMC 클라우드 공고 다수.","seed_hints":["채용시마감","해외","클라우드"]}
+{"query_id":"Q038","type":"constraint-heavy","query":"석사 이상 AI 연구원 경기","intent":"학력+직무+지역","tags":[],"notes":"학사 AI 엔지니어는 학력 실패. 코퍼스 석사 78건으로 희소.","seed_hints":["석사","AI","경기"]}
+{"query_id":"Q039","type":"constraint-heavy","query":"정보처리기사 우대 공공기관 시스템 운영 경기","intent":"자격+도메인+직무+지역","tags":[],"notes":"민간 SI 운영은 부분관련.","seed_hints":["정보처리기사","공공","시스템 운영","경기"]}
+{"query_id":"Q040","type":"constraint-heavy","query":"iOS 정규직 서울 경력 3년 이상","intent":"플랫폼+고용+지역+연차","tags":[],"notes":"Android-only, 계약직, 경력무관은 감점.","seed_hints":["iOS","서울","정규직"]}
+{"query_id":"Q041","type":"constraint-heavy","query":"프리랜서 GIS 또는 지도 개발 인천","intent":"고용형태+직무+지역","tags":[],"notes":"디티에쓰아이 GIS 프리랜서(인천) 등. 정규직 GIS는 고용 실패.","seed_hints":["프리랜서","GIS","인천"]}
+{"query_id":"Q042","type":"constraint-heavy","query":"교대근무 가능한 서울 네트워크 엔지니어 경력 3년 이상","intent":"근무형태+지역+직무+연차","tags":[],"notes":"교대 미언급 네트워크는 최대 1. 굿어스 서울 교대근무 공고가 후보.","seed_hints":["교대근무","네트워크","서울"]}
+{"query_id":"Q043","type":"constraint-heavy","query":"전문연구요원 가능한 비전 AI 프론트엔드","intent":"병역특례+도메인+직무","tags":[],"notes":"희소. 뉴로클 등. 일반 프론트는 실패.","seed_hints":["전문연구요원","비전 AI","프론트엔드"]}
+{"query_id":"Q044","type":"constraint-heavy","query":"대구 또는 대전 시스템 소프트웨어 정규직","intent":"비수도권 + 시스템SW + 정규직","tags":[],"notes":"서울 시스템SW 제외.","seed_hints":["대구","대전","시스템소프트웨어"]}
+{"query_id":"Q045","type":"constraint-heavy","query":"경력직 말고 신입만 클라우드 VDI 또는 가상화","intent":"부정(경력 제외)+신입+가상화","tags":["negation"],"notes":"에스엔시스 신입 가상화 공고 등. careerMin>0은 실패.","seed_hints":["신입","가상화","VDI","Citrix","VMware"]}
+{"query_id":"Q046","type":"constraint-heavy","query":"9월 14일 이전 마감 현대자동차 IT 신입","intent":"특정 마감일+회사군+신입","tags":["temporal","entity_overlap"],"notes":"현대차 2026 하반기 신입 IT(9/14 17:00)가 핵심 후보. 오토에버 경력과 구분.","seed_hints":["현대자동차","신입","2026-09-14"]}
+{"query_id":"Q047","type":"constraint-heavy","query":"하이브리드 근무 보안 아키텍트 경력 8년 이상","intent":"근무방식+직무+시니어","tags":[],"notes":"MS Director Security CSA 등 해외 공고 포함 가능. 주니어 보안운영은 실패.","seed_hints":["하이브리드","보안아키텍처","경력 8"]}
+{"query_id":"Q048","type":"constraint-heavy","query":"제주 근무 가능한 IT 개발 정규직","intent":"제주+개발+정규직","tags":[],"notes":"코퍼스 제주 7건. 관련 문서 0~소수일 수 있음. 있으면 귀함, 없으면 쿼리 폐기 후 대체.","seed_hints":["제주"]}
+{"query_id":"Q049","type":"entity-heavy","query":"카카오페이 서버 개발자","intent":"카카오페이 서버/백엔드 공고","tags":[],"notes":"카카오페이 14건. 카카오뱅크/카카오스타일과 구분.","seed_hints":["카카오페이","서버 개발자","스테이블코인"]}
+{"query_id":"Q050","type":"entity-heavy","query":"토스증권 개발","intent":"토스증권 IT/개발 공고","tags":[],"notes":"토스증권 2건으로 희소. '토스' 일반 19건과 구분.","seed_hints":["토스증권"]}
+{"query_id":"Q051","type":"entity-heavy","query":"안랩 2026년 9월 채용","intent":"안랩 9월 공채/수시","tags":["temporal"],"notes":"안랩 26건. 제목에 2026년 9월이 있는 공고가 우선.","seed_hints":["안랩"]}
+{"query_id":"Q052","type":"entity-heavy","query":"IBK기업은행 일반직원 수시채용 IT","intent":"IBK 2026 하반기 수시 중 IT 분야","tags":[],"notes":"IBK 언급 9건. 긴 공고 하나에 IT 여러 직무가 들어 있음.","seed_hints":["IBK기업은행"]}
+{"query_id":"Q053","type":"entity-heavy","query":"마이크로소프트 Azure SRE Agent","intent":"MS Azure SRE Agent Platform 엔지니어","tags":[],"notes":"MS 공고 245건 중 특정 제품명. 일반 Software Engineer와 구분.","seed_hints":["Azure SRE Agent","CoreAI"]}
+{"query_id":"Q054","type":"entity-heavy","query":"신한투자증권 슈퍼SOL","intent":"슈퍼SOL 채널 개발/운영 공고","tags":[],"notes":"고유 서비스명. 새한정보 공고가 후보.","seed_hints":["슈퍼SOL","신한투자증권"]}
+{"query_id":"Q055","type":"entity-heavy","query":"우리FIS 인프라 경력","intent":"우리에프아이에스 인프라 채용","tags":[],"notes":"우리은행 일반과 구분.","seed_hints":["우리FIS","우리에프아이에스"]}
+{"query_id":"Q056","type":"entity-heavy","query":"CISSP 우대 채용","intent":"CISSP 자격 우대/필수","tags":[],"notes":"자격증 엔티티. 정보보안기사만 있는 공고는 부분관련.","seed_hints":["CISSP"]}
+{"query_id":"Q057","type":"entity-heavy","query":"Palo Alto 보안 엔지니어","intent":"Palo Alto 방화벽/보안 장비 경험","tags":[],"notes":"굿어스 보안 엔지니어 등. 일반 정보보안과 구분.","seed_hints":["Palo Alto","PaloAlto"]}
+{"query_id":"Q058","type":"entity-heavy","query":"네이버랩스 로봇 소프트웨어","intent":"네이버랩스 Robot System Software","tags":[],"notes":"네이버 본사/클라우드와 구분.","seed_hints":["네이버랩스","Robot System Software"]}
+{"query_id":"Q059","type":"entity-heavy","query":"쿠팡 Staff Backend Engineer","intent":"쿠팡 영문 직급 백엔드","tags":[],"notes":"영문 직함 매칭. 쿠팡 일반 개발과 직급 구분.","seed_hints":["쿠팡","Staff Backend Engineer"]}
+{"query_id":"Q060","type":"entity-heavy","query":"현대오토에버","intent":"현대오토에버 공고 전반","tags":[],"notes":"회사명만. 69건이라 다소 넓음. 라벨은 회사 일치면 관련.","seed_hints":["현대오토에버"]}
+{"query_id":"Q061","type":"entity-heavy","query":"LG CNS 자회사 SAP ABAP","intent":"비즈테크아이 등 LG CNS 자회사 ABAP","tags":[],"notes":"LG전자/LG에너지와 구분.","seed_hints":["비즈테크아이","SAP ABAP"]}
+{"query_id":"Q062","type":"entity-heavy","query":"카카오뱅크 개발자","intent":"카카오뱅크 IT 공고","tags":[],"notes":"카카오페이/카카오스타일 오탐 체크. 3건 수준.","seed_hints":["카카오뱅크"]}
+{"query_id":"Q063","type":"entity-heavy","query":"JP모건 인프라 엔지니어","intent":"JPMorganChase Infrastructure Engineer","tags":["colloquial"],"notes":"한글 표기 vs 영문 회사명 매칭.","seed_hints":["JPMorganChase","Infrastructure Engineer"]}
+{"query_id":"Q064","type":"entity-heavy","query":"컴투스 Web QA","intent":"컴투스 웹 QA 계약직","tags":[],"notes":"게임사 QA 중 컴투스만.","seed_hints":["컴투스","Web QA"]}
+{"query_id":"Q065","type":"ambiguous","query":"해외 경험","intent":"해석A 해외근무 공고 / 해석B 해외출장 / 해석C 영어 우대 국내직무","tags":[],"notes":"해외 지역 1406건이 있어 A가 지배적. B/C도 별도 관련으로 표시.","interpretations":["해외 근무지 개발/IT 공고","국내 근무+해외 출장","영어 가능자 우대 국내 공고"]}
+{"query_id":"Q066","type":"ambiguous","query":"AI 관련 일","intent":"해석A 생성형AI/ML 엔지니어 / 해석B AI 서비스 백엔드 / 해석C AI 보안/거버넌스 / 해석D 제목에만 AI인 비AI직무","tags":[],"notes":"한 해석만 상위 10을 차지하면 실패. D는 관련도 낮게.","interpretations":["ML/GenAI 모델·플랫폼","AI 기능을 붙인 백엔드/프론트","AI 보안","제목만 AI"]}
+{"query_id":"Q067","type":"ambiguous","query":"대기업 개발","intent":"해석A 대기업 계열사 개발 / 해석B 대기업 SI 파견 / 해석C 외국계 대기업","tags":[],"notes":"현대차·삼성·MS·쿠팡·NTT 등이 섞임. 계열사/파견/외국계를 나눠 라벨.","interpretations":["국내 대기업 본사/계열","대기업 사이트 SI/SM 파견","외국계 대기업"]}
+{"query_id":"Q068","type":"ambiguous","query":"보안 일 찾고 있어요","intent":"해석A 보안관제/운영 / 해석B 보안개발 / 해석C 보안컨설팅 / 해석D 보안 QA","tags":["colloquial"],"notes":"정보보호_보안 551건으로 넓음. 하위직무를 해석으로 쪼갤 것.","interpretations":["보안 운영·관제","보안 솔루션 개발","보안 컨설팅","보안 QA"]}
+{"query_id":"Q069","type":"ambiguous","query":"클라우드","intent":"해석A 클라우드 엔지니어/SRE / 해석B AWS 쓰는 백엔드 / 해석C 해외 CSA 직무","tags":[],"notes":"키워드 클라우드 426건. 너무 넓어 Ambiguous가 맞음. Keyword로 쓰지 말 것.","interpretations":["인프라/클라우드 엔지니어","클라우드 활용 애플리케이션 개발","Cloud Solution Architect"]}
+{"query_id":"Q070","type":"ambiguous","query":"금융권 IT","intent":"해석A 은행/증권 내부 IT / 해석B 금융 SI 협력사 / 해석C 핀테크 서비스 개발","tags":[],"notes":"IBK/신한/우리FIS vs 오륜디지탈 파견 vs 카카오페이.","interpretations":["금융사 정규 IT","금융 도메인 SI/SM","핀테크 제품 개발"]}
+{"query_id":"Q071","type":"ambiguous","query":"인턴","intent":"해석A 체험형 / 해석B 전환형 / 해석C 신입 공고를 인턴으로 오해","tags":[],"notes":"체험형 104, 전환형 20. C는 비관련에 가깝게.","interpretations":["체험형인턴","전환형/채용연계형 인턴","신입을 인턴으로 지칭"]}
+{"query_id":"Q072","type":"ambiguous","query":"운영","intent":"해석A 시스템/서버 운영 / 해석B SM 개발운영 / 해석C 서비스 운영(비개발)","tags":[],"notes":"코퍼스에 시스템운영이 많아 A가 우세. C는 IT_개발 코퍼스에서 드묾.","interpretations":["인프라 운영","애플리케이션 SM","비개발 서비스 운영"]}
+{"query_id":"Q073","type":"no-match","query":"항공기 조종사 채용","intent":"파일럿 공고. IT 코퍼스에 없어야 함","tags":[],"notes":"pilot 키워드 0건. 항공 소프트웨어와 오탐 주의.","must_not_match":["파일럿","조종사 면허"]}
+{"query_id":"Q074","type":"no-match","query":"의사 면허 필수 포지션","intent":"임상 의사 채용","tags":[],"notes":"의사면허 0건. 의료기기 SW/헬스케어 IT는 오탐 후보. 관련도 0이어야 함.","must_not_match":["의사 면허","전문의"]}
+{"query_id":"Q075","type":"no-match","query":"2020년 이전 공고만 보여줘","intent":"오래된 공고만. 코퍼스는 2026년 수집분","tags":["temporal"],"notes":"createdAt/endDate가 2026. 2020 문서는 없어야 함.","must_not_match":["2020년 이전 게시"]}
+{"query_id":"Q076","type":"no-match","query":"한식 요리사 정규직 서울","intent":"요리사 채용","tags":[],"notes":"chef 0건. 구내식당 복지만 있는 개발 공고는 0점.","must_not_match":["요리사","셰프","조리사"]}
+{"query_id":"Q077","type":"no-match","query":"초등학교 담임교사 채용","intent":"초등교사","tags":[],"notes":"교사 언급 2건 수준이며 직무가 아님. 교육 스타트업 개발은 0점.","must_not_match":["초등교사","담임교사"]}
+{"query_id":"Q078","type":"no-match","query":"수의사 면허 있는 병원 실장","intent":"수의학 임상","tags":[],"notes":"IT/바이오 장비와 오탐 가능. 면허+병원 실장은 없어야 함.","must_not_match":["수의사"]}
+{"query_id":"Q079","type":"no-match","query":"건설 현장 일용직 형틀목수","intent":"건설 기능직","tags":[],"notes":"건설사 전산/IT 공고(유승건설 등)는 오탐. 형틀목수는 0점.","must_not_match":["형틀","목수","일용직"]}
+{"query_id":"Q080","type":"no-match","query":"유치원 원장 채용 제주","intent":"유아교육 관리직 + 제주","tags":[],"notes":"제주 IT 7건과 겹치지 않아야 함.","must_not_match":["유치원","원장"]}
