@@ -4,16 +4,25 @@
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f5f1;color:#213b34;font:16px/1.65 system-ui,sans-serif}header{background:#193f35;color:white;padding:24px}main{max-width:1200px;margin:24px auto;padding:0 20px}h1{font-size:24px;margin:0}h2{font-size:21px}h3{font-size:16px}nav{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:20px 0}button,a,select{font:inherit;padding:9px 14px;border:1px solid #c1cec6;border-radius:8px;background:white;color:#214b3c}button{cursor:pointer}button:disabled{opacity:.45}article{background:white;border:1px solid #dce4da;border-radius:14px;padding:22px;margin-bottom:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.muted{color:#66786e}.warning{color:#8b4d15}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:0}textarea{display:block;width:100%;min-height:80px;font:inherit;padding:10px;margin:6px 0 18px;border:1px solid #b9c9bc;border-radius:8px}#save{background:#215e49;color:white}#status{font-weight:600}label{display:block}#document{max-height:650px;overflow:auto;padding-right:12px}#progress{font-weight:700}@media(max-width:800px){.grid{grid-template-columns:1fr}}
 </style>
-<header><h1>판정 기준 맞추기</h1><span>먼저 0 ↔ 2점으로 갈린 5건을 검토합니다.</span></header>
-<main><nav><span id="progress">불러오는 중…</span><a href="/api/alignment-export">합의 결과 다운로드</a><a href="/">기존 평가</a></nav>
+<header><h1 id="heading">판정 기준 맞추기</h1><span id="lead">먼저 0 ↔ 2점으로 갈린 5건을 검토합니다.</span></header>
+<main><nav><span id="progress">불러오는 중…</span><a id="exportLink" href="/api/alignment-export">합의 결과 다운로드</a><a id="homeLink" href="/">기존 평가</a></nav>
 <nav><button id="prev">← 이전</button><span id="position"></span><button id="next">다음 →</button></nav>
-<article><span id="qid" class="muted"></span><h2 id="query"></h2><p id="warning" class="warning"></p><details><summary>기준 초안 · 기준일 2026-09-07</summary><p>2점: 핵심 의도와 필수 조건 충족. 1점: 핵심 의도는 맞지만 조건 근거 부족 또는 보조 업무. 0점: 핵심 직무가 다르거나 필수 조건을 명백히 위반. 내용 충돌은 보류하고, ‘신입만’·날짜 경계는 의미를 먼저 정합니다.</p><p>아래에서 규칙을 직접 확정하세요. 에이전트 점수도 정답으로 가정하지 않습니다.</p></details></article>
+<article><span id="qid" class="muted"></span><h2 id="query"></h2><p id="warning" class="warning"></p><details><summary>기준 초안 · 기준일 2026-09-07</summary><p>2점: 핵심 의도와 필수 조건 충족. 1점: 핵심 의도는 맞지만 조건 근거 부족 또는 보조 업무. 0점: 핵심 직무가 다르거나 필수 조건을 명백히 위반. 내용 충돌은 보류하고, ‘신입만’·날짜 경계는 의미를 먼저 정합니다.</p><p id="guideNote">아래에서 규칙을 직접 확정하세요. 에이전트 점수도 정답으로 가정하지 않습니다.</p></details></article>
 <div class="grid"><section><article><h3>사람 판정</h3><strong id="human"></strong><p id="humanNote"></p></article><article><h3>독립 에이전트 판정</h3><strong id="agent"></strong><p id="reason"></p><pre id="evidence"></pre><p id="review" class="warning"></p></article>
 <article><h3>최종 판정과 적용 규칙</h3><form id="form"><label>최종 점수 <select id="label" required><option value="">선택하세요</option><option value="0">0 · 비관련</option><option value="1">1 · 부분 관련</option><option value="2">2 · 관련</option><option value="review">판단 보류</option></select></label><label for="rule">이 사례에 적용할 규칙</label><textarea id="rule" required placeholder="예: ‘신입만’은 신입 전용 모집을 뜻한다."></textarea><label for="note">최종 판단 근거</label><textarea id="note" required placeholder="공고의 어떤 내용 때문에 이 점수를 선택했는지 적어주세요."></textarea><button id="save">저장하고 다음</button></form><p id="status" role="status" aria-live="polite"></p></article></section>
 <article><h3>저장된 공고 원문</h3><h2 id="title"></h2><p id="meta" class="muted"></p><div id="document"><pre id="content"></pre></div><details><summary>전체 메타데이터 보기</summary><pre id="metadata"></pre></details></article></div></main>
 <script>
-let state={items:[],decisions:{},index:0,busy:false,source_hash:''};
+const holdout=location.pathname.replace(/\/$/,'')==='/holdout-align';
+const api=holdout?'/api/holdout-alignment':'/api/alignment';
+document.title=holdout?'InfoHelper · holdout 0↔2 합의':'InfoHelper · 판정 기준 맞추기';
 const el=id=>document.getElementById(id);
+el('heading').textContent=holdout?'holdout 0 ↔ 2 합의':'판정 기준 맞추기';
+el('lead').textContent=holdout?'사람 2 / 에이전트 0으로 갈린 5건입니다. holdout 점수를 고쳐 일치율을 올리는 단계가 아닙니다.':'먼저 0 ↔ 2점으로 갈린 5건을 검토합니다.';
+el('guideNote').textContent=holdout?'왜 갈렸는지와 적용할 규칙을 적으세요. 기존 holdout 사람 점수는 이 화면에 저장되지 않습니다.':'아래에서 규칙을 직접 확정하세요. 에이전트 점수도 정답으로 가정하지 않습니다.';
+el('exportLink').href=holdout?'/api/holdout-alignment-export':'/api/alignment-export';
+el('homeLink').href=holdout?'/holdout':'/';
+el('homeLink').textContent=holdout?'holdout 평가':'기존 평가';
+let state={items:[],decisions:{},index:0,busy:false,source_hash:''};
 const current=()=>state.items[state.index];
 const draft=()=>({label:el('label').value,rule:el('rule').value,reason:el('note').value});
 function dirty(){const v=state.decisions[current()?.id];return JSON.stringify(draft())!==JSON.stringify({label:v?String(v.label):'',rule:v?.rule||'',reason:v?.reason||''});}
@@ -26,8 +35,8 @@ function move(step){if(state.busy)return;if(dirty()&&!confirm('저장하지 않�
 el('prev').onclick=()=>move(-1);el('next').onclick=()=>move(1);
 window.onbeforeunload=e=>{if(dirty()||state.busy){e.preventDefault();e.returnValue='';}};
 el('form').onsubmit=async e=>{e.preventDefault();if(state.busy)return;const row=current(),v=draft();if(!v.rule.trim()||!v.reason.trim()){el('status').textContent='규칙과 판단 근거를 입력하세요.';return;}state={...state,busy:true};document.querySelectorAll('button,select,textarea').forEach(x=>x.disabled=true);
-try{const response=await fetch(`/api/alignment/${encodeURIComponent(row.id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...v,label:v.label==='review'?'review':Number(v.label),source_hash:state.source_hash})});if(!response.ok)throw Error(response.status===409?'원본이 변경되었습니다. 입력을 복사한 뒤 새로고침하세요.':'저장 실패. 입력을 유지했습니다. 다시 시도하세요.');const saved=await response.json();state={...state,decisions:{...state.decisions,[row.id]:saved},index:Math.min(state.index+1,state.items.length-1)};render();el('status').textContent=Object.values(state.decisions).filter(x=>x.label!=='review').length===state.items.length?'5건 합의 완료. 이제 대화에서 결과 정리를 요청하세요.':'저장했습니다. 이전 버튼으로 수정할 수 있습니다.';}
+try{const response=await fetch(`${api}/${encodeURIComponent(row.id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...v,label:v.label==='review'?'review':Number(v.label),source_hash:state.source_hash})});if(!response.ok)throw Error(response.status===409?'원본이 변경되었습니다. 입력을 복사한 뒤 새로고침하세요.':'저장 실패. 입력을 유지했습니다. 다시 시도하세요.');const saved=await response.json();state={...state,decisions:{...state.decisions,[row.id]:saved},index:Math.min(state.index+1,state.items.length-1)};render();el('status').textContent=Object.values(state.decisions).filter(x=>x.label!=='review').length===state.items.length?'5건 합의 완료. 이제 대화에서 결과 정리를 요청하세요.':'저장했습니다. 이전 버튼으로 수정할 수 있습니다.';}
 catch(error){el('status').textContent=error.message;}
 finally{state={...state,busy:false};document.querySelectorAll('button,select,textarea').forEach(x=>x.disabled=false);el('prev').disabled=state.index===0;el('next').disabled=state.index===state.items.length-1;}};
-fetch('/api/alignment').then(async r=>{if(!r.ok)throw Error('검토 데이터를 불러오지 못했습니다.');return r.json();}).then(data=>{state={...state,...data,index:Math.max(0,data.items.findIndex(i=>!data.decisions[i.id]||data.decisions[i.id].label==='review'))};render();}).catch(e=>{el('progress').textContent=e.message;});
+fetch(api).then(async r=>{if(!r.ok)throw Error('검토 데이터를 불러오지 못했습니다.');return r.json();}).then(data=>{state={...state,...data,index:Math.max(0,data.items.findIndex(i=>!data.decisions[i.id]||data.decisions[i.id].label==='review'))};render();}).catch(e=>{el('progress').textContent=e.message;});
 </script></html>

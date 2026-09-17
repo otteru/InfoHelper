@@ -61,8 +61,8 @@ def argument_parser(description: str, run_name: str) -> argparse.ArgumentParser:
     """두 검색기에 동일한 corpus·query·출력 옵션을 제공한다."""
     parser = argparse.ArgumentParser(description=description)
     #TODO 이거 clean된 corpus로 변경해야 하는지 확인
-    parser.add_argument('--corpus', type=Path, default=ROOT / 'RAG_evaluation/dataset/zighang/corpus.jsonl')
-    parser.add_argument('--queries', type=Path, default=ROOT / 'RAG_evaluation/dataset/zighang/queries/eval_queries_80.jsonl')
+    parser.add_argument('--corpus', type=Path, default=ROOT / 'RAG_evaluation/dataset/corpus.jsonl')
+    parser.add_argument('--queries', type=Path, default=ROOT / 'RAG_evaluation/dataset/queries/eval_queries_80.jsonl')
     parser.add_argument('--corpus-version', default='zighang_v1')
     parser.add_argument('--run-name', default=run_name)
     parser.add_argument('--top-k', type=int, default=20)

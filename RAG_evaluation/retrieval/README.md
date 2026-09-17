@@ -12,8 +12,8 @@ python RAG_evaluation/retrieval/lexical.py
 python RAG_evaluation/retrieval/hybrid.py
 ```
 
-기본 입력은 정제된 `dataset/zighang/corpus.jsonl`과
-`dataset/zighang/queries/eval_queries_80.jsonl`이다. `--corpus`, `--queries`,
+기본 입력은 정제된 `dataset/corpus.jsonl`과
+`dataset/queries/eval_queries_80.jsonl`이다. `--corpus`, `--queries`,
 `--corpus-version`, `--run-name`, `--top-k`, `--output-dir`로 변경할 수 있다.
 검색에는 쿼리 파일의 `query`만 사용하며 `intent`, `notes`, `seed_hints`는 사용하지 않는다.
 

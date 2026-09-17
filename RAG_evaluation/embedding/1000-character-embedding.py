@@ -23,7 +23,7 @@ from integrations.clients import (
 def main() -> None:
     """실험 옵션을 읽고 dry-run 또는 재개 가능한 임베딩을 실행한다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--corpus', type=Path, default=ROOT / 'RAG_evaluation/dataset/zighang/corpus.jsonl')
+    parser.add_argument('--corpus', type=Path, default=ROOT / 'RAG_evaluation/dataset/corpus.jsonl')
     parser.add_argument('--corpus-version', default='zighang_v1')
     parser.add_argument('--run-name', default='fixed1000_qwen1536_v1')
     parser.add_argument('--model', default=EMBEDDING_MODEL)
