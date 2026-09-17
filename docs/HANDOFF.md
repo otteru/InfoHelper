@@ -320,7 +320,7 @@ users 1 ── N subscriptions N ── 1 sources
 ## 관련 파일
 
 - `RAG_evaluation/retrieval/common.py` - 검색 공통 입력 검증과 run/manifest 저장
-- `RAG_evaluation/retrieval/dense.py` - 평가 임베딩 run 검증 및 Dense 검색
+- `RAG_evaluation/retrieval/semantic.py` - 평가 임베딩 run 검증 및 Dense 검색
 - `RAG_evaluation/retrieval/lexical.py` - Kiwi 기반 BM25 검색
 - `RAG_evaluation/retrieval/hybrid.py` - 저장된 Dense·BM25 run 검증 및 RRF 융합
 - `RAG_evaluation/retrieval/README.md` - 검색 실행 옵션과 산출물 안내

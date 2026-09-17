@@ -7,7 +7,7 @@ conda activate infohelper
 python -m pip install -e '.[evaluation]'
 supabase migration up --local
 
-python RAG_evaluation/retrieval/dense.py
+python RAG_evaluation/retrieval/semantic.py
 python RAG_evaluation/retrieval/lexical.py
 python RAG_evaluation/retrieval/hybrid.py
 ```

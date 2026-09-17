@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 
 from RAG_evaluation.embedding.fixed_character import Document
-from RAG_evaluation.retrieval import common, dense, lexical
+from RAG_evaluation.retrieval import common, lexical, semantic
 
 
 @pytest.fixture(scope='module')
@@ -87,8 +87,8 @@ def test_dense_기존_입력과_run_격리() -> None:
     db.rpc.return_value.execute.return_value.data = [{'doc_id': str(UUID(int=1)), 'score': 0.8}]
     run = {'run_id': 'selected-run', 'embedding_model': 'model', 'dimensions': 2,
            'config': {'query_template': 'text: {query}'}}
-    with patch.object(dense, 'create_embedding', return_value=[1.0, 0.0]) as embed:
-        result = dense.DenseRetriever(db, client, run).search('MLOps', 20)
+    with patch.object(semantic, 'create_embedding', return_value=[1.0, 0.0]) as embed:
+        result = semantic.DenseRetriever(db, client, run).search('MLOps', 20)
     embed.assert_called_once_with(client, 'text: MLOps', model='model', dimensions=2)
     db.rpc.assert_called_once_with('match_eval_documents', {
         'p_run_id': 'selected-run', 'p_query_embedding': [1.0, 0.0], 'p_top_k': 20,
@@ -104,4 +104,4 @@ def test_dense_미완료와_corpus_불일치_차단(inputs: common.Inputs, statu
         'status': status, 'corpus_version': 'v1', 'corpus_sha256': corpus_hash, 'expected_documents': 3,
     }]
     with pytest.raises(ValueError):
-        dense.load_embedding_run(db, 'run', inputs, 'v1')
+        semantic.load_embedding_run(db, 'run', inputs, 'v1')
