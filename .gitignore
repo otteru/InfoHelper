@@ -13,3 +13,11 @@ test/mvp2/test.md
 
 # generated blog assets
 /docs/blog-assets/
+
+# 재생성 가능한 검색 결과와 평가 산출물
+/RAG_evaluation/artifacts/
+
+# 공개 대상에서 제외한 로컬 라벨링 실험 도구
+/RAG_evaluation/labeling/compare_agent.py
+/RAG_evaluation/labeling/first_pass.py
+/test/rag_evaluation/test_first_pass.py

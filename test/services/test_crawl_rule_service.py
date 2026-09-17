@@ -18,10 +18,14 @@ from app.schemas.crawl_rule import (
     ValidationStatus,
 )
 from app.schemas.source import SourceResponse
+from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
+
 from app.services.crawl_rule import (
     NoticeRuleSample,
+    _normalize_root_link_url,
     fetch_html,
     generate_candidate,
+    generate_css_schema,
     validate_detail_css_rule,
     validate_css_rule,
 )
@@ -156,6 +160,139 @@ def test_validate_css_rule_accepts_complete_extraction() -> None:
     )
 
 
+def test_validate_css_rule_accepts_url_in_base_fields() -> None:
+    """목록 항목 자체의 href를 url 필드로 검증한다."""
+    definition = CrawlRuleDefinition.model_validate(
+        {
+            "name": "채용 공고 목록",
+            "baseSelector": "a.relative",
+            "baseFields": [
+                {
+                    "name": "url",
+                    "type": "attribute",
+                    "attribute": "href",
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "selector": "span.title",
+                    "type": "text",
+                }
+            ],
+        }
+    )
+    strategy = Mock()
+    strategy.extract.return_value = [
+        {"title": "백엔드 개발자", "url": "/recruitment/1"}
+    ]
+
+    with patch(
+        "app.services.crawl_rule.JsonCssExtractionStrategy",
+        return_value=strategy,
+    ):
+        result = validate_css_rule(SOURCE_URL, HTML, definition)
+
+    assert result[0].url == "https://example.com/recruitment/1"
+
+
+ROOT_ANCHOR_RULE = CrawlRuleDefinition.model_validate(
+    {
+        "name": "Job Listings",
+        "baseSelector": "a[class^='relative']",
+        "fields": [
+            {
+                "name": "title",
+                "selector": ".typo-body-lg-semi-bold",
+                "type": "text",
+            },
+            {
+                "name": "url",
+                "selector": "a",
+                "type": "attribute",
+                "attribute": "href",
+            },
+        ],
+    }
+)
+
+
+def test_루트가_a이면_자식_a_url을_baseFields로_옮긴다() -> None:
+    """카드 루트가 a인데 url이 자식 a를 찾으면 루트 href로 보정한다."""
+    result = _normalize_root_link_url(ROOT_ANCHOR_RULE)
+
+    assert result.base_selector == "a[class^='relative']"
+    assert [field.name for field in result.fields] == ["title"]
+    assert result.base_fields is not None
+    assert result.base_fields[0].name == "url"
+    assert result.base_fields[0].type == "attribute"
+    assert result.base_fields[0].attribute == "href"
+
+
+def test_루트가_div이면_자식_a_url을_유지한다() -> None:
+    """항목 루트가 링크가 아니면 자식 a href 규칙을 건드리지 않는다."""
+    rule = CrawlRuleDefinition.model_validate(
+        {
+            "name": "공지 목록",
+            "baseSelector": "div.card",
+            "fields": [
+                {
+                    "name": "title",
+                    "selector": "span.title",
+                    "type": "text",
+                },
+                {
+                    "name": "url",
+                    "selector": "a",
+                    "type": "attribute",
+                    "attribute": "href",
+                },
+            ],
+        }
+    )
+
+    assert _normalize_root_link_url(rule) == rule
+
+
+def test_보정된_루트_a_규칙으로_title과_url을_추출한다() -> None:
+    """보정 후 실제 CSS 추출에서 href가 채워지는지 확인한다."""
+    html = (
+        '<a class="relative" href="/recruitment/abc">'
+        '<span class="typo-body-lg-semi-bold">백엔드 리드</span>'
+        "</a>"
+    )
+    normalized = _normalize_root_link_url(ROOT_ANCHOR_RULE)
+    schema = normalized.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+    )
+    items = JsonCssExtractionStrategy(schema).extract(SOURCE_URL, html)
+
+    assert items == [
+        {
+            "title": "백엔드 리드",
+            "url": "/recruitment/abc",
+        }
+    ]
+
+
+def test_generate_css_schema가_루트_a_url을_보정한다() -> None:
+    """목록 스키마 생성 결과에 루트 링크 보정을 적용한다."""
+    async def fake_generate(*args: object, **kwargs: object) -> CrawlRuleDefinition:
+        return ROOT_ANCHOR_RULE
+
+    with patch(
+        "app.services.crawl_rule._generate_css_schema",
+        side_effect=fake_generate,
+    ):
+        result = asyncio.run(generate_css_schema("<html></html>"))
+
+    assert result.base_fields is not None
+    assert result.base_fields[0].name == "url"
+    assert [field.name for field in result.fields] == ["title"]
+
+
 def test_validate_detail_css_rule_uses_list_title_as_fallback() -> None:
     """상세 제목이 비어 있으면 목록에서 추출한 제목을 사용한다."""
     strategy = Mock()
@@ -264,11 +401,11 @@ def test_generate_candidate_marks_passed_and_activates_rule() -> None:
         ),
         patch(
             "app.services.crawl_rule.generate_css_schema",
-            return_value=RULE_DEFINITION,
+            new=AsyncMock(return_value=RULE_DEFINITION),
         ),
         patch(
             "app.services.crawl_rule.generate_detail_css_schema",
-            return_value=DETAIL_RULE_DEFINITION,
+            new=AsyncMock(return_value=DETAIL_RULE_DEFINITION),
         ),
         patch(
             "app.services.crawl_rule.validate_css_rule",
@@ -322,7 +459,7 @@ def test_generate_candidate_marks_failed_without_activation() -> None:
         ),
         patch(
             "app.services.crawl_rule.generate_css_schema",
-            return_value=RULE_DEFINITION,
+            new=AsyncMock(return_value=RULE_DEFINITION),
         ),
         patch(
             "app.services.crawl_rule.validate_css_rule",
@@ -330,7 +467,7 @@ def test_generate_candidate_marks_failed_without_activation() -> None:
         ),
         patch(
             "app.services.crawl_rule.generate_detail_css_schema",
-            return_value=DETAIL_RULE_DEFINITION,
+            new=AsyncMock(return_value=DETAIL_RULE_DEFINITION),
         ),
         patch(
             "app.services.crawl_rule.validate_detail_css_rule",
@@ -376,7 +513,7 @@ def test_generate_candidate_accepts_two_of_three_detail_samples() -> None:
         ),
         patch(
             "app.services.crawl_rule.generate_css_schema",
-            return_value=RULE_DEFINITION,
+            new=AsyncMock(return_value=RULE_DEFINITION),
         ),
         patch(
             "app.services.crawl_rule.validate_css_rule",
@@ -384,7 +521,7 @@ def test_generate_candidate_accepts_two_of_three_detail_samples() -> None:
         ),
         patch(
             "app.services.crawl_rule.generate_detail_css_schema",
-            return_value=DETAIL_RULE_DEFINITION,
+            new=AsyncMock(return_value=DETAIL_RULE_DEFINITION),
         ),
         patch(
             "app.services.crawl_rule.validate_detail_css_rule",

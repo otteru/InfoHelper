@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.schemas.crawl_rule import CrawlRuleDefinition
 from app.services.crawl_rule import (
     DETAIL_SAMPLE_COUNT,
+    LIST_SCHEMA_QUERY,
     MINIMUM_DETAIL_SAMPLE_SUCCESSES,
     NoticeRuleSample,
     fetch_html as fetch_service_html,
@@ -34,15 +35,16 @@ from app.services.crawl_rule import (
     validate_css_rule,
     validate_detail_css_rule,
 )
+from integrations.clients import (
+    CRAWL4AI_GENERATION_PROVIDER,
+    OPENROUTER_BASE_URL,
+)
 
 load_dotenv(PROJECT_ROOT / ".env.local")
 load_dotenv(PROJECT_ROOT / ".env")
 
 KONKUK_NOTICE_URL = "https://www.konkuk.ac.kr/bbs/ee/407/artclList.do"
-GEMINI_FLASH_PROVIDER = "gemini/gemini-2.5-flash"
-SCHEMA_QUERY = (
-    "공지 목록의 각 행에서 제목(title)과 상세 페이지 링크(url)를 추출한다."
-)
+SCHEMA_QUERY = LIST_SCHEMA_QUERY
 SCHEMA_EXAMPLE = json.dumps(
     {
         "title": "2026학년도 2학기 현장실습학기제 안내",
@@ -52,11 +54,11 @@ SCHEMA_EXAMPLE = json.dumps(
 )
 
 
-def get_gemini_api_token() -> str:
-    """Crawl4AI LLM 호출에 사용할 Gemini API 키를 반환한다."""
-    token = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+def get_openrouter_api_token() -> str:
+    """Crawl4AI LLM 호출에 사용할 OpenRouter API 키를 반환한다."""
+    token = os.environ.get("OPENROUTER_API_KEY")
     if not token:
-        raise RuntimeError("GOOGLE_API_KEY 또는 GEMINI_API_KEY가 필요합니다.")
+        raise RuntimeError("OPENROUTER_API_KEY가 필요합니다.")
     return token
 
 
@@ -82,8 +84,9 @@ def generate_css_schema(html: str) -> dict[str, object]:
         query=SCHEMA_QUERY,
         target_json_example=SCHEMA_EXAMPLE,
         llm_config=LLMConfig(
-            provider=GEMINI_FLASH_PROVIDER,
-            api_token=get_gemini_api_token(),
+            provider=CRAWL4AI_GENERATION_PROVIDER,
+            api_token=get_openrouter_api_token(),
+            base_url=OPENROUTER_BASE_URL,
         ),
         validate=False,
     )

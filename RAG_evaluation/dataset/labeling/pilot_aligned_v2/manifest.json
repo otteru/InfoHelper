@@ -1,0 +1,41 @@
+{
+  "dataset_version": "pilot_aligned_v2",
+  "count": 120,
+  "status_counts": {
+    "original_agreement": 93,
+    "human_confirmed": 27
+  },
+  "score_scale": [
+    0,
+    1,
+    2
+  ],
+  "score_counts": {
+    "2": 32,
+    "1": 10,
+    "0": 78
+  },
+  "all_human_confirmed": true,
+  "changed_from_proposal": {
+    "Q040:d72a9bdb-28b1-4232-9f03-1ba3313ed642": {
+      "from": 1,
+      "to": 2
+    },
+    "Q027:8aef8e4e-6d8a-4218-a6bb-4846cdfc88ae": {
+      "from": 1,
+      "to": 2
+    },
+    "Q023:91c44605-606c-446a-9fa1-06534dd93c19": {
+      "from": 0,
+      "to": 1
+    }
+  },
+  "source_hashes": {
+    "RAG_evaluation/dataset/labeling/pilot_aligned_v1/pairs.jsonl": "fb83625529c53f0c51a3550ccdd5e1db29d4babacbc3e478631a3243bbbda256",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_pilot_v1/confirmation.sqlite3": "a51699509bfdeed15a71c5ca3b27eff712300e9ebebf96486bfe922af484f312",
+    "docs/labeling-guidelines.md": "467e1f0c7c24b775a2155b6d34ad9c54cb494a33e6c4cbc19734a69b0ecb1f0f"
+  },
+  "confirmation_history_sha256": "ca1f01c37c334076757124f5a5788459ae3504443ccf867e033c30efe4646e3b",
+  "previous_data_sha256": "fb83625529c53f0c51a3550ccdd5e1db29d4babacbc3e478631a3243bbbda256",
+  "data_sha256": "e6022dc41c17729f884f6d6a61ec332937327af660044a8d3b968ec54202f66d"
+}

@@ -4,12 +4,12 @@ from typing import cast
 
 import frontmatter
 from langgraph.runtime import Runtime
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 from ai_graphs.recommendation_graph.models import RetrievedChunk
 from ai_graphs.recommendation_graph.state import RecommendationState
 from ai_graphs.shared.context import GraphContext
+from integrations.clients import create_embedding
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 USER_INFO_PATH = PROJECT_ROOT / "data" / "userInfo.md"
@@ -48,23 +48,9 @@ def load_user_info(state: RecommendationState) -> RecommendationState:
         "queries": queries,
     }
 
-def _create_embedding(client: genai.Client, text: str) -> list[float]:
-    content = f"text: {text}"
-
-    response = client.models.embed_content(
-        model="gemini-embedding-2",
-        contents=content,
-        config=types.EmbedContentConfig(output_dimensionality=1536),
-    )
-
-    if not response.embeddings:
-        raise ValueError("임베딩 결과가 비어 있습니다.")
-
-    values = response.embeddings[0].values
-    if not values:
-        raise ValueError("임베딩 값을 가져오지 못했습니다.")
-
-    return values
+def _create_embedding(client: OpenAI, text: str) -> list[float]:
+    """검색어를 OpenRouter 임베딩 벡터로 변환한다."""
+    return create_embedding(client, f"text: {text}")
 
 
 def _create_retrieved_chunk(
@@ -107,7 +93,7 @@ def queries_search(
     runtime: Runtime[GraphContext],
 ) -> RecommendationState:
     """목적별 추천 검색어를 각각 임베딩하고 유사한 공지 청크를 검색한다."""
-    gemini_client = runtime.context.gemini_client
+    embedding_client = runtime.context.embedding_client
     supabase_client = runtime.context.supabase_client
 
     queries = state.get("queries", ())
@@ -119,7 +105,7 @@ def queries_search(
 
     for query in queries:
         embedding = _create_embedding(
-            gemini_client,
+            embedding_client,
             text=query,
         )
 

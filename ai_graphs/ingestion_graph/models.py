@@ -2,7 +2,7 @@ from uuid import UUID
 from dataclasses import dataclass
 from datetime import date
 
-from app.schemas.crawl_rule import CrawlRuleDefinition
+from app.schemas.crawl_rule import CrawlMode, CrawlRuleDefinition
 
 
 # sources 테이블에서 읽어 온 크롤링 출처
@@ -15,6 +15,8 @@ class Source:
     url: str
     rule_definition: CrawlRuleDefinition
     detail_rule_definition: CrawlRuleDefinition | None = None
+    list_crawl_mode: CrawlMode = CrawlMode.DEFAULT
+    detail_crawl_mode: CrawlMode = CrawlMode.DEFAULT
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class NoticeTarget:
     url: str
     title: str | None = None
     detail_rule_definition: CrawlRuleDefinition | None = None
+    detail_crawl_mode: CrawlMode = CrawlMode.DEFAULT
 
 
 # 상세 페이지를 크롤링·정제한 뒤 임베딩과 저장에 사용하는 공지 데이터

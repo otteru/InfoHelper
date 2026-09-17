@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InfoHelper · 제안 17건 확정</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f1;color:#213b34;font:16px/1.65 system-ui,sans-serif}header{background:#193f35;color:white;padding:24px}main{max-width:1200px;margin:24px auto;padding:0 20px}h1{font-size:24px;margin:0}h2{font-size:21px}h3{font-size:16px}nav{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:20px 0}button,a,select{font:inherit;padding:9px 14px;border:1px solid #c1cec6;border-radius:8px;background:white;color:#214b3c}button{cursor:pointer}button:disabled{opacity:.45}article{background:white;border:1px solid #dce4da;border-radius:14px;padding:22px;margin-bottom:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.scores{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}.muted{color:#66786e}.warning{color:#8b4d15}.proposed{outline:2px solid #215e49}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:0}textarea{display:block;width:100%;min-height:80px;font:inherit;padding:10px;margin:6px 0 18px;border:1px solid #b9c9bc;border-radius:8px}#save{background:#215e49;color:white}#accept{background:#e7f3ec}#status{font-weight:600}label{display:block}#document{max-height:650px;overflow:auto;padding-right:12px}#progress{font-weight:700}@media(max-width:900px){.grid,.scores{grid-template-columns:1fr}}
+</style>
+<header><h1>제안 17건 확정</h1><span>assistant 제안은 아직 당신 점수가 아닙니다. 공고를 읽고 0·1·2를 확정하세요.</span></header>
+<main><nav><span id="progress">불러오는 중…</span><a href="/api/proposals-export">확정 결과 다운로드</a><a href="/align">큰 불일치 합의</a><a href="/">기존 평가</a></nav>
+<nav><button id="prev">← 이전</button><span id="position"></span><button id="next">다음 →</button></nav>
+<article><span id="qid" class="muted"></span><h2 id="query"></h2><p id="intent" class="muted"></p><p id="warning" class="warning"></p><details><summary>기준 · 기준일 2026-09-07</summary><p>2점: 핵심 의도와 필수 조건 충족. 1점: 핵심 의도는 맞지만 조건 근거 부족 또는 보조 업무. 0점: 핵심 직무가 다르거나 필수 조건을 명백히 위반.</p><p>제안 점수를 정답으로 가정하지 마세요. 저장해야 당신 확정입니다. 보류는 확정 건수에 넣지 않습니다.</p></details></article>
+<div class="grid"><section>
+<div class="scores">
+<article><h3>최초 사람</h3><strong id="human"></strong><p id="humanNote"></p></article>
+<article><h3>최초 에이전트</h3><strong id="agent"></strong><p id="agentReason"></p></article>
+<article class="proposed"><h3>assistant 제안</h3><strong id="proposed"></strong><p id="proposedReason"></p></article>
+</div>
+<article><h3>최종 판정</h3><form id="form"><label>최종 점수 <select id="label" required><option value="">선택하세요</option><option value="0">0 · 비관련</option><option value="1">1 · 부분 관련</option><option value="2">2 · 관련</option><option value="review">판단 보류</option></select></label><label for="note">최종 판단 근거</label><textarea id="note" required placeholder="공고의 어떤 내용 때문에 이 점수를 선택했는지 적어주세요."></textarea><button type="button" id="accept">제안 점수와 근거를 그대로 넣기</button><button id="save">저장하고 다음</button></form><p id="status" role="status" aria-live="polite"></p></article>
+</section>
+<article><h3>저장된 공고 원문</h3><h2 id="title"></h2><p id="meta" class="muted"></p><div id="document"><pre id="content"></pre></div><details><summary>전체 메타데이터 보기</summary><pre id="metadata"></pre></details></article></div></main>
+<script>
+let state={items:[],decisions:{},index:0,busy:false,source_hash:''};
+const el=id=>document.getElementById(id);
+const current=()=>state.items[state.index];
+const draft=()=>({label:el('label').value,reason:el('note').value});
+function dirty(){const v=state.decisions[current()?.id];return JSON.stringify(draft())!==JSON.stringify({label:v?String(v.label):'',reason:v?.reason||''});}
+function render(){const row=current();if(!row){el('progress').textContent='확정할 제안이 없습니다.';return;}const value=state.decisions[row.id];const done=Object.values(state.decisions).filter(v=>v.label!=='review').length;
+el('progress').textContent=`확정 ${done}/${state.items.length} · 보류 ${Object.values(state.decisions).filter(v=>v.label==='review').length}`;
+const d=row.document||{},m=d.metadata||{};
+for(const [key,text] of Object.entries({qid:`${row.query_id} · ${row.query_type}`,query:row.query,intent:row.intent||'',title:d.title||'',human:`${row.initial_human_relevance}점`,agent:`${row.initial_agent_relevance}점`,humanNote:row.initial_human_note||'메모 없음',agentReason:row.initial_agent_reason||'',proposed:`${row.score}점`,proposedReason:row.reason||'',warning:row.warning||'',content:d.content||'',metadata:JSON.stringify(m,null,2),position:`${state.index+1} / ${state.items.length}`}))el(key).textContent=text;
+el('meta').textContent=`${m.company?.name||''} · ${(m.regions||[]).join(', ')} · 경력 ${m.careerMin??'?'}~${m.careerMax===100?'상한 없음':m.careerMax??'?'}년 · ${m.endDate||m.deadlineType||''}`;
+el('label').value=value?String(value.label):'';el('note').value=value?.reason||'';el('prev').disabled=state.index===0;el('next').disabled=state.index===state.items.length-1;el('document').scrollTop=0;}
+function move(step){if(state.busy)return;if(dirty()&&!confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))return;state={...state,index:state.index+step};el('status').textContent='';render();}
+el('prev').onclick=()=>move(-1);el('next').onclick=()=>move(1);
+el('accept').onclick=()=>{const row=current();if(!row)return;el('label').value=String(row.score);el('note').value=row.reason||'';};
+window.onbeforeunload=e=>{if(dirty()||state.busy){e.preventDefault();e.returnValue='';}};
+el('form').onsubmit=async e=>{e.preventDefault();if(state.busy)return;const row=current(),v=draft();if(!v.label||!v.reason.trim()){el('status').textContent='점수와 판단 근거를 입력하세요.';return;}state={...state,busy:true};document.querySelectorAll('button,select,textarea').forEach(x=>x.disabled=true);
+try{const response=await fetch(`/api/proposals/${encodeURIComponent(row.id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...v,label:v.label==='review'?'review':Number(v.label),source_hash:state.source_hash})});if(!response.ok)throw Error(response.status===409?'원본이 변경되었습니다. 입력을 복사한 뒤 새로고침하세요.':'저장 실패. 입력을 유지했습니다. 다시 시도하세요.');const saved=await response.json();state={...state,decisions:{...state.decisions,[row.id]:saved},index:Math.min(state.index+1,state.items.length-1)};render();el('status').textContent=Object.values(state.decisions).filter(x=>x.label!=='review').length===state.items.length?'17건 확정 완료. 대화에서 결과 정리를 요청하세요.':'저장했습니다. 이전 버튼으로 수정할 수 있습니다.';}
+catch(error){el('status').textContent=error.message;}
+finally{state={...state,busy:false};document.querySelectorAll('button,select,textarea').forEach(x=>x.disabled=false);el('prev').disabled=!current()||state.index===0;el('next').disabled=!current()||state.index===state.items.length-1;}};
+fetch('/api/proposals').then(async r=>{if(!r.ok)throw Error('제안 데이터를 불러오지 못했습니다.');return r.json();}).then(data=>{state={...state,...data,index:Math.max(0,data.items.findIndex(i=>!data.decisions[i.id]||data.decisions[i.id].label==='review'))};render();}).catch(e=>{el('progress').textContent=e.message;});
+</script></html>

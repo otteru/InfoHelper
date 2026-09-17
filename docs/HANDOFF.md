@@ -1,5 +1,23 @@
 # 작업 인계 문서
 
+## 최신 라벨링 인계 (2026-09-17)
+
+아래 과거 진행 기록보다 이 절이 우선한다. 파일럿·holdout·1차 검수 원점수는 다시 채점하지 않는다. artifacts sqlite와 Grok 산출물은 삭제하지 않는다.
+
+- 기준: `docs/labeling-guidelines.md` v1.4. 점수 0·1·2, 기준일 2026-09-07.
+- **검색 평가용 합본:** `RAG_evaluation/dataset/labeling/pool_v1/`
+  - `qrels.txt`, `judgments.jsonl`, `manifest.json`
+  - 3,022쌍. 공고 원문 없음. `all_human_confirmed=false`
+  - 점수: 0점 2,051 / 1점 196 / 2점 775
+  - 출처: 파일럿 사람 120, holdout 사람 120, 1차 검수 사람 129, 1차 검수 에이전트 224, Grok 자동 2,429
+- 재생성: `/opt/miniconda3/envs/infohelper/bin/python RAG_evaluation/labeling/export_pool.py`. 기존 `pool_v1`과 내용이 다르면 덮어쓰기를 거부한다.
+- 감사 50(`/audit`)은 화면으로만 훑었고 버튼을 안 눌러 `pool_v1`에 넣지 않았다.
+- R7: 직무 질의는 메인이어야 2, 기술 질의는 실사용이면 메인 아니어도 2. 남은 검수 224에만 적용했고 파일럿·holdout은 이 규칙으로 재채점하지 않았다.
+- 라벨 웹은 꺼 둔 상태다. 다시 켜려면 `python -m uvicorn RAG_evaluation.labeling.app:app --host 127.0.0.1 --port 8765`. `/` 파일럿, `/holdout`, `/review` 353, `/audit` 50, `/holdout-align`.
+- GitHub: `dataset/corpus.jsonl`과 `dataset/queries/`는 공개 평가 입력이다. `artifacts/`와 `dataset/zighang/` 수집 원본·DB는 올리지 않는다. 올려도 되는 것은 라벨링 코드·테스트·기준 문서·`pilot_aligned_v2`·`pool_v1`. `compare_agent.py`는 Downloads 경로, `first_pass.py`는 Gemini용이므로 고치기 전엔 커밋하지 않는 편이 낫다.
+
+다음 세션: `pool_v1/qrels.txt`로 nDCG@10 / Recall@10 / MRR@10 벤치마크를 구현하고 Dense·BM25·Hybrid baseline을 기록한다. 3,022 재라벨은 하지 않는다.
+
 ## 완료된 작업
 
 - [x] 기존 AI 배치 서비스 구현·배포
@@ -104,7 +122,7 @@
 - [x] 크롤링 규칙 생성 FastAPI 구현
   - `POST /api/v1/sources/{source_id}/crawl_rules` 엔드포인트와 라우터를 추가했다
   - `SourceRepository.get_by_id`로 등록된 Source를 조회한다
-  - Source HTML을 가져와 Crawl4AI와 Gemini로 CSS 스키마를 생성한다
+  - Source HTML을 가져와 Crawl4AI와 OpenRouter LLM으로 CSS 스키마를 생성한다
   - `target_json_example`은 단일 객체의 `title`, `url` 필드를 사용한다
   - Crawl4AI `validate=True`, `max_refinements=3`으로 스키마 보정을 시도한다
   - 생성된 스키마를 같은 HTML에 적용해 `title`, `url`이 채워진 공지가 있는지 다시 검증한다
@@ -130,7 +148,7 @@
   - 이미지·첨부 중심 공지가 있어 3개 모두 본문을 요구하지 않고, 1~2개 샘플은 전부·3개 샘플은 최소 2개 통과 시 활성화하도록 구현했다.
   - Ingestion은 상세 Rule이 있으면 실제 title/content만 저장하고, 상세 추출 실패 공지의 기존 chunk를 삭제해 오염된 과거 데이터가 RAG에 남지 않게 했다.
   - 목록에서 추출한 title은 상세 title이 비었을 때 fallback으로 사용한다.
-  - Gemini 모델은 Crawl4AI 0.9.2 호환을 위해 `gemini/gemini-2.5-flash`로 변경했다.
+  - 당시 Crawl4AI 0.9.2 호환을 위해 `gemini/gemini-2.5-flash`를 썼고, 이후 OpenRouter `google/gemini-3.6-flash`로 바꿨다.
 - [x] 상세 Rule 로컬 E2E 검증
   - migration 적용과 `supabase db lint --local`이 통과했다.
   - 건국대 Source `f25944ce-c864-497b-9c74-df5bdaff229d`에 v4 규칙이 `active/passed`로 전환됐다.
@@ -141,9 +159,56 @@
   - Crawl4AI `arun_many()`의 반환 순서가 요청 순서와 다를 수 있어, 결과의 `url`로 원래 요청 순서에 다시 정렬하도록 수정했다.
   - 결과를 역순으로 반환하는 단위 테스트와 실제 건국대 E2E로 제목·본문·URL이 같은 공지를 가리키는지 검증했다.
   - Energy Summer Academy 공지는 올바른 URL `1200589`로 저장·SES 발송됐고, 잘못 연결됐던 `1202619` chunk는 삭제됐다.
+- [x] Gemini 일일 한도 대응으로 OpenRouter 전환
+  - generation/embedding 모두 `OPENROUTER_API_KEY`를 사용한다.
+  - 현재 generation은 `google/gemini-3.6-flash`, embedding은 `qwen/qwen3-embedding-8b`다.
+  - Crawl4AI provider는 `openrouter/{GENERATION_MODEL}`이다. 상수는 `integrations/clients.py`에 있다.
+  - 기존 `notice_chunks` 차원과 맞추려고 embedding `dimensions=1536`을 유지한다.
+  - GraphContext는 `gemini_client` 대신 `embedding_client`(OpenAI SDK)다.
+- [x] 목록 CSS 생성 프롬프트를 공고/공지 목적 지향으로 변경
+  - `LIST_SCHEMA_QUERY`는 테이블 행이 아니라 반복 항목의 title/url을 뽑도록 바꿨다.
+  - 루트가 이미 `a`면 url은 자식 `a`가 아니라 `baseFields` href를 쓰라고 명시했다.
+- [x] 루트 링크 url 보정
+  - `_normalize_root_link_url()`이 `baseSelector`가 `a`인데 `fields.url.selector`가 자식 `a`인 스키마를 `baseFields.href`로 옮긴다.
+  - 직행 카드가 `<a class="relative" href="/recruitment/...">`인 경우를 위한 안전망이다.
 
 ## 진행 중인 작업
 
+- [x] 직행(`https://zighang.com/it`) 크롤링 규칙 생성·규칙 적용 E2E
+  - Source id: `36701990-2c33-4979-801d-cbaf59c04154`
+  - curl: `list_crawl_mode=infinite_scroll`, `detail_crawl_mode=dynamic`
+  - 첫 실행은 `wait_until=networkidle` 60초 timeout으로 502가 났으나, 다음 실행은 16.7초에 통과했다. 직행의 분석·위젯 등 지속 요청 때문에 `networkidle`은 비결정적이다.
+  - 목록·상세 규칙을 생성하고 `active/passed` 상태로 전환했다. 목록 규칙은 `main .grid > a`, 상세 규칙은 `main > h1`과 `.tiptap.ProseMirror`다.
+  - active 규칙을 DB에서 읽어 목록과 상세 3개에 읽기 전용으로 적용했다. 목록 20개, 상세 제목·본문 3개(556자, 466자, 4,804자)를 성공적으로 추출했다.
+  - 현재 `infinite_scroll`은 `max_scroll_steps=2`라 전체 공고 corpus 수집에는 쓰지 않는다.
+- [ ] RAG 평가 데이터셋 (`feat/rag-eval-dataset`)
+  - 목표 순서: 데이터셋(qrels, TREC pooling) → 벤치마크 시스템 → 기존 RAG 평가 → query prefix → 청킹 → Retrieval → Reranker → dimension
+  - 평가 corpus는 건국대 공지 대신 직행 IT·개발 채용공고 5,000건으로 만들었다.
+  - 직행 목록 API는 `GET https://api.zighang.com/api/recruitments`이며 응답은 `{ timestamp, success, data, code, message }`, 실제 페이지 정보는 `data.content`, `data.page`, `data.size`, `data.totalElements`, `data.totalPages`, `data.last`에 있다.
+  - UI의 IT·개발 필터는 반복된 `depthTwos` query parameter 25개로 전달된다. 필터 미적용 API는 사용하지 않는다.
+  - `RAG_evaluation/crawler/zighang.py`가 IT 필터와 `page`를 순회해 목록·상세 API 원본, checkpoint, 평가 corpus를 저장한다.
+  - 원문 `content`를 우선 사용하고 이미지뿐인 공고는 직행 `summary`를 사용한다. 5,000건 중 원문은 221건, 요약은 4,779건이다.
+  - 전체 ID·제목·본문·메타데이터·본문 해시·IT 필터를 원본 API 응답과 대조했고, 실제 상세 페이지 3건도 제목·전체 텍스트 일치를 확인했다.
+  - corpus 정제 기준은 본문 공백 제거 후 50자 미만 제외, `title + content`가 같은 문서는 하나만 유지다. 5,000건에서 318건과 중복 1건을 제거해 4,681건을 `zighang_v1`으로 확정했다. 원본은 로컬 `corpus.before-cleaning.jsonl`에 보관한다.
+  - 운영 `notice_chunks`와 분리해 `eval_documents`, `eval_embedding_runs`, `eval_chunks` 테이블을 만들었다. 원본 공고·실험 설정·실험별 청크/벡터를 분리하고, 복합 외래키와 벡터 차원 제약, RLS/service_role 권한을 적용했다.
+  - `fixed1000_qwen1536_v1` run은 기존 ingestion과 동일하게 본문을 겹침 없이 Python 문자열 1,000자씩 나누고 `title: {title} | text: {chunk}`를 Qwen `qwen/qwen3-embedding-8b` 1,536차원으로 임베딩했다.
+  - 로컬 Supabase에 4,681개 공고와 5,603개 청크를 저장했고 run은 `completed`다. 저장된 벡터의 차원은 모두 1,536이며, 원본 제목·청크와 실제 임베딩 입력의 불일치는 0건이다.
+  - `1000-character-embedding.py`는 dry-run, 소량 실행, 실패 후 재개, batch size 옵션을 제공한다. 같은 run 재실행은 추가 API 호출 없이 종료한다. 다른 모델·차원·청킹은 새 run 이름으로 저장해야 한다.
+- [x] Dense·BM25·Hybrid 검색 구현 및 사용자 코드 파악 완료 (2026-09-13)
+  - Dense와 BM25는 공고 단위 `(doc_id, score)`를 반환하고 `collect_results()`와 run/manifest 저장을 공유한다.
+  - `hybrid.py`는 저장된 Dense·BM25 run을 `query_id`로 연결해 동일 가중치 RRF로 결합한다. 기본값은 후보/최종 top-k=20, 순위 보정 상수 rrf-k=60이며 동점은 doc_id 오름차순이다.
+  - Hybrid는 API·DB 호출 없이 원본 run의 manifest 상태, corpus·query·결과 해시, 건수, ID와 순위를 검증한 뒤 결합한다. 출력 manifest의 `source_runs`에는 두 원본 run·manifest 해시를 기록한다.
+  - 사용자가 `python RAG_evaluation/retrieval/hybrid.py`를 실행해 `hybrid_rrf60_v1`을 저장했다. 생성 시각은 2026-09-13 18:57:22 KST다.
+  - 실시간 `hybrid_rrf60_v1`과 과거 Dense·BM25 run 기반 RRF가 32/80 쿼리에서 달랐다. 원인은 쿼리 임베딩이 호출마다 달라질 수 있기 때문이다. 같은 벡터의 DB 검색은 재현됐지만, OpenRouter 제공자를 DeepInfra로 고정하고 fallback을 차단해도 일부 임베딩 벡터·Dense 순위가 변했다.
+  - 새 기본 실행 이름은 `hybrid_rrf60_saved_v1`이며, 같은 저장 run과 설정으로 두 번 실행해 1,600행 JSONL이 완전히 일치하는 것을 검증했다. 검색·Hybrid 테스트는 24개 통과했다.
+  - 세 run의 `(query_id, doc_id)` 합집합은 3,022건으로 기존 두 run과 같다. 동일 후보 깊이의 RRF는 독립적인 새 후보 공급원이 아니므로 세 run이라는 이유만으로 pool 다양성이 늘었다고 표현하지 않는다.
+  - `hybrid_rrf60_saved_v1`은 artifacts에 생성돼 있고 manifest의 Dense·BM25 source run/manifest 해시가 기록돼 있다. 80쿼리·1,600행이다.
+  - Dense·BM25 top-20 합집합에서 유형별 20쌍씩 120쌍을 고정 시드로 뽑았다. 80개 쿼리를 모두 포함하며, 원문과 원본 파일 해시는 `labeling_pilot_v1/pilot.json`에 고정했다.
+  - 로컬 웹 라벨링 화면에서 유담님이 120건 모두 판정했다. 결과는 2점 38건, 1점 11건, 0점 71건이며 보류·미평가는 0건이다. `pilot.qrels`은 확정된 파일럿 120건을 `query_id 0 doc_id relevance` 형식으로 저장한다.
+  - 사람 점수·메모·쿼리 유형·검색 순위를 제외한 질문·공고 제목·본문·선택 메타데이터만 대화 이력이 없는 독립 하위 에이전트에 제공해 120건을 직접 판정했다. 사람과 93/120(77.5%) 일치, Cohen kappa 0.588이다. 유형별 일치는 entity-heavy 90%, no-match 95%, ambiguous 85%, keyword 80%, semantic 60%, constraint-heavy 55%다.
+  - 큰 불일치(0↔2)는 5건이다. 보안 직무의 범위, 신입 전용과 신입·경력 공동 채용, 경력 최소 연수, `9월 14일 이전`의 당일 포함 여부가 핵심 원인이다. 사람 라벨은 변경하지 않았다.
+  - 파일럿 120·holdout 120·1차 2782 라벨이 끝났고 합본은 `dataset/labeling/pool_v1/`이다. 사람 전수 확정은 아니다.
+  - 라벨링 UI: `/` 파일럿, `/holdout`, `/review`, `/audit`, `/holdout-align`. 서버는 종료됨.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -155,17 +220,17 @@
   - `users`, `subscriptions`, `user_preferences`, `recommendation_feedback`를 최소 범위로 구성할 예정이다
 - [ ] RAG 딥다이브 준비
   - 현재 1,000자 고정 청킹, Dense Search, 유사도 0.65, 자체 점수 공식을 Baseline으로 고정한다
-  - 실제 공지와 사용자 프로필에 relevance 정답을 붙인 평가 데이터셋은 아직 없다
+  - 직행 채용 pool 3,022 qrels는 `dataset/labeling/pool_v1/`에 있다. 건국대 공지·사용자 프로필 정답은 없다.
   - Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간을 기준으로 개선안을 비교할 예정이다
 
 ## 다음에 해야 할 작업
 
-1. 이미지·첨부 중심 공지는 텍스트 RAG 대상에서 제외할지, OCR·첨부 텍스트 추출을 별도 기능으로 둘지 결정한다. 현재는 제외가 구현된 동작이다.
-2. 실제 상세 title/content만 남은 현재 corpus에서 RAG Baseline을 다시 측정한다. 추천 후보가 0개인 원인을 먼저 기록한다.
-3. 이후 청킹, 제목+본문 임베딩, Hybrid Search, metadata filter, reranker를 한 번에 하나씩 비교한다.
-4. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
-5. 대학 공지 사이트 10~20개로 규칙 생성 성공률, URL 추출 정확도, 비용, 지연시간과 실패 원인을 측정한다.
-6. 이후 사용자 DB·추천 피드백, Chat 프로필, 최소 웹 UI 순으로 진행한다.
+1. `pool_v1/qrels.txt`로 nDCG@10, Recall@10, MRR@10 벤치마크를 구현하고 Dense·BM25·Hybrid baseline을 기록한다. 3,022 재라벨은 하지 않는다.
+2. 더 깊은 Dense·BM25 후보 또는 새 검색기를 넣을지는 벤치마크 이후에 결정한다. Hybrid는 현재 top-20에서 새 후보를 추가하지 않는다. corpus를 임의로 덮어쓰지 않는다.
+3. 라벨링 코드·`pilot_aligned_v2`·`pool_v1` GitHub 커밋은 사용자가 요청할 때만 한다. `dataset/corpus.jsonl`과 `dataset/queries/`는 포함하고, `artifacts/`와 `dataset/zighang/` 수집 원본·DB는 제외한다.
+4. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
+5. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
+6. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
 
@@ -213,11 +278,21 @@ users 1 ── N subscriptions N ── 1 sources
 - Supabase CLI는 프로젝트 루트에서 실행하고 Docker Desktop이 필요하다.
 - `supabase db reset`은 로컬 DB를 초기화한다. 원격 DB를 지우는 `--linked`를 붙이지 않는다.
 - `.env`, `.env.local`, Supabase Secret Key, API key, AWS 인증정보를 커밋하지 않는다.
-- 루트 `main.py`는 실제 크롤링·Gemini·Supabase·SES 요청을 실행한다.
+- 루트 `main.py`는 실제 크롤링·OpenRouter embedding·Supabase·SES 요청을 실행한다.
+- 생성 LLM과 임베딩은 OpenRouter다. 키는 `OPENROUTER_API_KEY`. 모델 상수는 `integrations/clients.py`의 `GENERATION_MODEL`, `EMBEDDING_MODEL`.
+- 시도했던 generation 모델: `google/gemma-3-27b-it`(CSS 선택자 불안정), `qwen/qwen3-32b`(너무 느림), 현재 `google/gemini-3.6-flash`.
+- Gemma는 루트 `a`의 href를 자식 `a`로 찾거나, 안쪽 div class를 바깥 `a`에 붙이는 실수를 자주 했다. 프롬프트+`_normalize_root_link_url`은 전자만 보정한다.
+- 직행 카드 마크업은 `<a class="relative" href="/recruitment/{uuid}"><div class="fade-in bg-primary-light group ...">`다.
+- 직행의 `networkidle` timeout 로그는 확정적인 anti-bot 차단 증거가 아니다. 실제 브라우저와 Crawl4AI에서 목록·상세 추출은 성공했지만, 백그라운드 요청 타이밍 때문에 결과가 흔들린다.
+- 직행은 스크롤할 때 공고 20개씩 DOM에 추가한다. 3,000~5,000건 수집에 `scan_full_page`/`max_scroll_steps`를 늘리는 방식은 사용하지 않고 목록 API 페이지네이션을 사용한다.
+- 직행 API의 IT 필터는 반복된 `depthTwos` query parameter로 전달된다. API 응답은 최상단 `data` 안에 페이지 정보를 둔다.
+- Qwen embedding과 기존 Gemini embedding을 같은 `notice_chunks`에 섞지 않는다. 차원은 둘 다 1536이어도 공간은 다르다.
+- `ai_graphs/ingestion_graph/tools.py`의 `setup_gemini_model`은 아직 Gemini leftover다. 사용 경로가 아니면 나중에 정리한다.
+- 인프라 `infra/ecs.py` secrets는 아직 `GOOGLE_API_KEY`다.
 - `test/mvp1/requests_test.py`는 import 시 네트워크 요청을 실행하므로 전체 `pytest`는 피한다.
-- `SourceCrawlRuleRepository`는 Ingestion `load_sources`에서 쓰인다. 규칙 전용 FastAPI 엔드포인트는 아직 없다.
+- `SourceCrawlRuleRepository`는 Ingestion `load_sources`와 `POST /api/v1/sources/{source_id}/crawl_rules`에서 쓰인다.
 - uvicorn `--reload --env-file .env.local`만으로는 자식 프로세스에 `SUPABASE_URL`이 없을 수 있다. 로컬 API는 `.env.local`을 셸에 source한 뒤 실행한다.
-- `seed_konkuk_rule.py`는 로컬 Source UUID가 박혀 있다. 원격 DB에 돌리지 않는다.
+- `seed_konkuk_rule.py`는 이 브랜치에서 삭제됐다. 건국대 규칙은 DB의 active 행을 사용한다.
 - `activate`는 이미 active가 아니면 `validation_status=passed`만 허용한다. 시드 스크립트는 활성화 전에 passed로 바꾼다.
 - `version` 번호는 max+1이라 동시 생성 시 unique violation이 날 수 있다. MVP에서는 나중에 처리한다.
 - `update()` payload는 `dict[str, str | None]`이며 Supabase JSON 타입으로 `cast`한다.
@@ -244,16 +319,45 @@ users 1 ── N subscriptions N ── 1 sources
 
 ## 관련 파일
 
+- `RAG_evaluation/retrieval/common.py` - 검색 공통 입력 검증과 run/manifest 저장
+- `RAG_evaluation/retrieval/semantic.py` - 평가 임베딩 run 검증 및 Dense 검색
+- `RAG_evaluation/retrieval/lexical.py` - Kiwi 기반 BM25 검색
+- `RAG_evaluation/retrieval/hybrid.py` - 저장된 Dense·BM25 run 검증 및 RRF 융합
+- `RAG_evaluation/retrieval/README.md` - 검색 실행 옵션과 산출물 안내
+- `test/rag_evaluation/test_retrieval.py`, `test/rag_evaluation/test_hybrid.py` - 검색·저장·RRF 테스트
+- `RAG_evaluation/artifacts/zighang_v1/` - 세 검색 run과 manifests (Git 제외)
+- `RAG_evaluation/labeling/app.py` - 파일럿·holdout·review·audit 라벨링 API
+- `RAG_evaluation/labeling/index.html` - `/` 파일럿, `/holdout`, `/review`, `/audit`
+- `RAG_evaluation/labeling/confirm.html` - 파일럿 제안 17건 확정. 끝남
+- `RAG_evaluation/labeling/export_confirmed.py` - `pilot_aligned_v2` 재생성
+- `RAG_evaluation/labeling/export_pool.py` - 3,022쌍 `pool_v1` 합본. 기존 파일 삭제 없음
+- `RAG_evaluation/labeling/compare_agent.py` - Downloads 절대경로. 커밋 전에 CLI로 고칠 것
+- `RAG_evaluation/labeling/first_pass.py` - Gemini 1차용. 실제 1차는 Grok 서브에이전트
+- `RAG_evaluation/labeling/README.md` - 로컬 라벨링 실행 안내
+- `test/rag_evaluation/test_labeling.py`, `test_first_pass.py`, `test_export_pool.py`
+- `RAG_evaluation/dataset/labeling/pilot_aligned_v2/` - 파일럿 확정 120
+- `RAG_evaluation/dataset/labeling/pool_v1/` - 검색 평가용 3,022 qrels
+- `RAG_evaluation/artifacts/zighang_v1/labeling_*` - sqlite·Grok 샤드 (Git 제외, 삭제 금지)
+
 - `app/main.py` - FastAPI 애플리케이션 진입점
 - `app/api/router.py` - API v1 라우터 조립
 - `app/api/endpoints/sources.py` - Source 등록 엔드포인트와 Repository 주입
 - `app/api/endpoints/crawl_rules.py` - CSS 크롤링 규칙 생성 엔드포인트
-- `app/services/crawl_rule.py` - HTML 수집, 스키마 생성·검증, candidate 상태 전환과 활성화
+- `app/services/crawl_rule.py` - HTML 수집, 스키마 생성·검증, 루트 `a` url 보정, candidate 상태 전환과 활성화
 - `app/api/dependencies.py` - Supabase, Source와 Crawl Rule Repository dependency
 - `app/schemas/source.py` - Source 요청·응답 스키마
 - `app/repositories/source.py` - SourceRepository Protocol과 Supabase 구현. `list_all`, `get_by_id` 포함
 - `app/exceptions.py` - Source와 크롤링 규칙 도메인 오류
-- `integrations/clients.py` - Gemini·Supabase 공통 클라이언트 생성
+- `integrations/clients.py` - OpenRouter·Supabase 공통 클라이언트와 generation/embedding 모델 상수
+- `RAG_evaluation/embedding/1000-character-embedding.py` - 평가 corpus의 기존 1,000자 청킹 임베딩 실행 진입점
+- `RAG_evaluation/embedding/fixed_character.py` - corpus 검증, 실험 설정, 재개 가능한 임베딩 저장 로직
+- `RAG_evaluation/embedding/README.md` - 실행, 재개, 다른 차원 실험 규칙과 실제 검증 결과
+- `supabase/migrations/20260909000000_create_eval_embedding_tables.sql` - 평가 원본·run·청크/벡터 테이블과 제약
+- `test/rag_evaluation/test_fixed_character.py` - 기존 입력 형식, 벡터 검증, 재개·실패 테스트
+- `test/rag_evaluation/eval_schema.sql` - PostgreSQL 제약·권한·완료 조건 롤백 검증
+- `integrations/crawl_config.py` - default/dynamic/infinite_scroll Crawl4AI 실행 설정
+- `test/integrations/test_clients.py` - OpenRouter 키 검사와 embedding 파싱 테스트
+- `docs/rag-eval-dataset.md` - RAG 고도화 브랜치 목표 목록
 - `integrations/url_safety.py` - URL 형태·DNS·공개 IP 기반 SSRF 1차 검증
 - `supabase/migrations/20260814051424_create_sources.sql` - sources 테이블 migration
 - `supabase/migrations/20260819000000_create_source_crawl_rules.sql` - 사이트별 버전형 크롤링 규칙 migration
@@ -270,19 +374,27 @@ users 1 ── N subscriptions N ── 1 sources
 - `test/integrations/test_url_safety.py` - 공개·사설 IP와 DNS URL 정책 테스트
 - `ai_graphs/ingestion_graph/models.py` - 배치용 Source, 목록 제목과 상세 Rule을 갖는 NoticeTarget
 - `ai_graphs/ingestion_graph/nodes.py` - 목록·상세 CSS 추출, legacy fallback, 무효 공지 chunk 정리
-- `seed_konkuk_rule.py` - 로컬 건국대 규칙 저장·활성화 스크립트
 - `data/userURL.json` - DB 전환 전 임시 Source 입력. Ingestion은 더 이상 사용하지 않음
 - `data/userInfo.md` - DB 전환 전 임시 사용자·추천 Query 입력
 
 ## 마지막 상태
 
-- 브랜치: `feat/crawl-rule-api`
-- HEAD: `7870cec` (`docs: 크롤링 규칙 API 작업 인계 갱신`)
-- 최근 코드 커밋: `9d1f4ab` (`feat: 크롤링 규칙 생성 API`), `a4cd6ea` (`fix: 외부 URL SSRF 사전 차단`)
-- 작업 트리: 상세 Rule 구현·테스트·migration·HANDOFF가 아직 커밋되지 않았다. 기존 Gemini 모델 변경과 HANDOFF 변경도 포함돼 있다.
-- 안전 테스트: `conda run -n infohelper pytest test/api test/repositories test/schemas test/services test/integrations test/ingestion_graph test/recommendation_graph test/delivery -q` → `110 passed, 1 warning`
-- 문법 검사: `conda run -n infohelper python -m compileall -q app ai_graphs delivery integrations main.py` 통과
-- diff 검사: `git diff --check` 통과.
-- 로컬 DB: migration `20260901000000_add_detail_rule_definition.sql` 적용 및 `supabase db lint --local` 통과
-- 외부 연동: v5 Rule 생성 E2E와 Ingestion·Recommendation·SES E2E를 실행했다. 최신 실행은 15 chunks, 7 extraction errors, 1 recommendation이며 SES 발송·중복 차단을 확인했다.
-- 다음 세션 시작 문구: `docs/HANDOFF.md 읽고 목록 URL 중복 제거와 상세 추출 실패 공지 정책을 정리한 뒤 RAG Baseline 측정으로 이어서 진행해줘`
+- 브랜치: `feat/rag-eval-dataset` (origin보다 1 커밋 ahead)
+- 마지막 커밋: `7fda3a8 feat: 라벨링 파일럿 기준 및 데이터셋 추가`
+- `RAG_evaluation/artifacts/`와 `dataset/zighang/`는 gitignore. 미커밋: 라벨링 UI·export_pool·`pilot_aligned_v2`·`pool_v1`·기준 v1.4·테스트. 커밋은 사용자가 요청하기 전에는 하지 않는다.
+- 이전 임베딩 단계 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
+- 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
+- 재개 curl:
+
+```bash
+curl --max-time 300 \
+  -X POST "http://127.0.0.1:8000/api/v1/sources/36701990-2c33-4979-801d-cbaf59c04154/crawl_rules" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "list_crawl_mode": "infinite_scroll",
+    "detail_crawl_mode": "dynamic"
+  }'
+```
+
+- 최신 검증: `pytest test/rag_evaluation/test_export_pool.py -q` 2개 통과. `pool_v1` 3,022쌍. 검색·Hybrid 테스트 24개는 이전에 통과했다.
+- 다음 세션: 이 절과 `docs/labeling-guidelines.md` v1.4, `RAG_evaluation/dataset/labeling/pool_v1/manifest.json`을 읽고 `qrels.txt`로 Dense·BM25·Hybrid baseline 벤치마크를 구현한다. 3,022 재라벨은 하지 않는다.

@@ -32,6 +32,21 @@ class GeneratedBy(str, Enum):
     LLM = "llm"
 
 
+class CrawlMode(str, Enum):
+    """사이트 렌더링 방식에 맞는 Crawl4AI 수집 모드."""
+
+    DEFAULT = "default"
+    DYNAMIC = "dynamic"
+    INFINITE_SCROLL = "infinite_scroll"
+
+
+class CrawlRuleGenerationRequest(BaseModel):
+    """크롤링 규칙 생성에 사용할 목록·상세 수집 모드."""
+
+    list_crawl_mode: CrawlMode = CrawlMode.DEFAULT
+    detail_crawl_mode: CrawlMode = CrawlMode.DEFAULT
+
+
 # {
 #   "name": "공지 목록",
 #   "baseSelector": "table tbody tr",
@@ -51,7 +66,7 @@ class GeneratedBy(str, Enum):
 # }
 
 # CrawlRuleDefinition은 공지 목록 전체를 추출하는 규칙,
-# CrawlRuleField는 그 안에서 개별 데이터를 추출하는 규칙
+# CrawlRuleField는 그 안에서 개별 데이터를 추출하는 규칙이다.
 
 
 class CrawlRuleField(BaseModel):
@@ -71,10 +86,32 @@ class CrawlRuleField(BaseModel):
         return self
 
 
+class CrawlRuleBaseField(BaseModel):
+    """목록 항목 루트에서 selector 없이 추출하는 필드."""
+
+    name: str
+    type: Literal["text", "attribute"]
+    attribute: str | None = None
+
+    @model_validator(mode="after")
+    def validate_attribute(self) -> "CrawlRuleBaseField":
+        """attribute 타입에 속성명이 있는지 검증한다."""
+        if self.type == "attribute" and self.attribute is None:
+            raise ValueError("attribute 타입에는 attribute가 필요합니다.")
+
+        return self
+
+
 class CrawlRuleDefinition(BaseModel):
+    """Crawl4AI CSS 추출 스키마를 표현한다."""
+
     name: str
     base_selector: str = Field(alias="baseSelector")
     fields: tuple[CrawlRuleField, ...] = Field(min_length=1)
+    base_fields: tuple[CrawlRuleBaseField, ...] | None = Field(
+        default=None,
+        alias="baseFields",
+    )
 
 # ========================= DB ===========================
 
@@ -85,6 +122,8 @@ class SourceCrawlRuleCreate(BaseModel):
     source_id: UUID
     rule_definition: CrawlRuleDefinition
     detail_rule_definition: CrawlRuleDefinition | None = None
+    list_crawl_mode: CrawlMode = CrawlMode.DEFAULT
+    detail_crawl_mode: CrawlMode = CrawlMode.DEFAULT
     generated_by: GeneratedBy
 
 
@@ -104,6 +143,8 @@ class SourceCrawlRuleResponse(BaseModel):
     validated_at: datetime | None
     last_health_checked_at: datetime | None
     detail_rule_definition: CrawlRuleDefinition | None = None
+    list_crawl_mode: CrawlMode = CrawlMode.DEFAULT
+    detail_crawl_mode: CrawlMode = CrawlMode.DEFAULT
 
     @model_validator(mode="after")
     def validate_health_status(self) -> "SourceCrawlRuleResponse":

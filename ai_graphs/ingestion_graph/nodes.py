@@ -4,10 +4,9 @@ from typing import Any
 from urllib.parse import urljoin
 
 from langgraph.runtime import Runtime
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from supabase import Client
 
 from ai_graphs.ingestion_graph.models import (
@@ -18,9 +17,12 @@ from ai_graphs.ingestion_graph.models import (
 )
 from ai_graphs.ingestion_graph.state import IngestionState
 from ai_graphs.shared.context import GraphContext
+from integrations.clients import create_embedding
 from app.repositories.source import SupabaseSourceRepository
 from app.repositories.crawl_rule import SupabaseSourceCrawlRuleRepository
+from app.schemas.crawl_rule import CrawlMode
 from integrations.url_safety import UnsafeUrlError, validate_public_url
+from integrations.crawl_config import create_crawler_run_config
 
 # Ingestion Graph workflow
 # 1. sources 테이블과 active 크롤링 규칙을 불러온다.
@@ -55,22 +57,41 @@ def load_sources(
                     "detail_rule_definition",
                     None,
                 ),
+                list_crawl_mode=getattr(
+                    rule,
+                    "list_crawl_mode",
+                    CrawlMode.DEFAULT,
+                ),
+                detail_crawl_mode=getattr(
+                    rule,
+                    "detail_crawl_mode",
+                    CrawlMode.DEFAULT,
+                ),
             )
         )
 
     return {"sources": tuple(loaded)}
 
+def _build_crawler_config(mode: CrawlMode) -> CrawlerRunConfig:
+    """수집 모드에 맞는 Crawl4AI 실행 설정을 만든다."""
+    return create_crawler_run_config(mode)
+
+
 async def _crawl_throgh_crawl4ai(
     urls: list[str],
+    crawl_modes: list[CrawlMode] | None = None,
 ) -> list[Any | CrawlFailure]:
     """하나의 Crawl4AI 크롤러로 여러 URL을 크롤링한다."""
     if not urls:
         return []
 
+    modes = crawl_modes or [CrawlMode.DEFAULT] * len(urls)
+    if len(urls) != len(modes):
+        raise ValueError("URL과 수집 모드의 개수가 일치하지 않습니다.")
+
     result_slots: list[Any | CrawlFailure | None] = [None] * len(urls)
-    safe_urls: list[str] = []
-    safe_indices: list[int] = []
-    for index, url in enumerate(urls):
+    grouped_requests: dict[CrawlMode, list[tuple[int, str]]] = {}
+    for index, (url, mode) in enumerate(zip(urls, modes, strict=True)):
         try:
             await asyncio.to_thread(validate_public_url, url)
         except UnsafeUrlError as error:
@@ -80,43 +101,46 @@ async def _crawl_throgh_crawl4ai(
             )
             continue
 
-        safe_urls.append(url)
-        safe_indices.append(index)
+        grouped_requests.setdefault(mode, []).append((index, url))
 
-    if not safe_urls:
+    if not grouped_requests:
         return [
             result
             for result in result_slots
             if result is not None
         ]
 
-    browser_config = BrowserConfig(headless=True, verbose=True)
-    crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            results = await crawler.arun_many(
-                urls=safe_urls,
-                config=crawler_config,
-            )
+        async with AsyncWebCrawler(
+            config=BrowserConfig(headless=True, verbose=True)
+        ) as crawler:
+            for mode, requests in grouped_requests.items():
+                safe_indices, safe_urls = zip(*requests, strict=True)
+                results = await crawler.arun_many(
+                    urls=list(safe_urls),
+                    config=_build_crawler_config(mode),
+                )
+                if isinstance(results, AsyncIterator):
+                    crawled_results = [result async for result in results]
+                else:
+                    crawled_results = list(results)
+
+                aligned_results = _align_crawl_results(
+                    list(safe_urls),
+                    crawled_results,
+                )
+                for index, result in zip(
+                    safe_indices,
+                    aligned_results,
+                    strict=True,
+                ):
+                    result_slots[index] = result
     except Exception as error:
         message = f"{type(error).__name__}: {error}"
-        for index, url in zip(safe_indices, safe_urls, strict=True):
-            result_slots[index] = CrawlFailure(url=url, message=message)
-    else:
-        # stream으로 올 경우 비동기적으로 꺼내서 리스트로 만든다.
-        if isinstance(results, AsyncIterator):
-            crawled_results = [result async for result in results]
-        else:
-            crawled_results = list(results)
-
-        aligned_results = _align_crawl_results(safe_urls, crawled_results)
-        for index, result in zip(
-            safe_indices,
-            aligned_results,
-            strict=True,
-        ):
-            result_slots[index] = result
+        for requests in grouped_requests.values():
+            for index, url in requests:
+                if result_slots[index] is None:
+                    result_slots[index] = CrawlFailure(url=url, message=message)
 
     return [
         result
@@ -177,6 +201,7 @@ async def crawl_source_page(state: IngestionState) -> IngestionState:
     # Crawl4AI가 URL 목록을 동시 크롤링하고 결과를 반환한다.
     results = await _crawl_throgh_crawl4ai(
         [source.url for source in sources],
+        [source.list_crawl_mode for source in sources],
     )
 
     notice_targets: tuple[NoticeTarget, ...] = ()
@@ -251,6 +276,7 @@ def _notice_targets_from_html(
                 url=url,
                 title=title,
                 detail_rule_definition=source.detail_rule_definition,
+                detail_crawl_mode=source.detail_crawl_mode,
             ),
         )
         seen_urls = frozenset((*seen_urls, url))
@@ -353,6 +379,7 @@ async def crawl_notice_pages(state: IngestionState) -> IngestionState:
 
     results = await _crawl_throgh_crawl4ai(
         [target.url for target in notice_targets],
+        [target.detail_crawl_mode for target in notice_targets],
     )
 
     notices: tuple[Notice, ...] = ()
@@ -392,23 +419,9 @@ def _split_text(text:str, chunk_size: int = 1000) -> list[str] :
         if text[index:index + chunk_size].strip()
     ]
 
-def _create_embedding(client: genai.Client, title: str, text: str) -> list[float]:
-    content = f"title: {title} | text: {text}"
-
-    response = client.models.embed_content(
-        model="gemini-embedding-2",
-        contents=content,
-        config=types.EmbedContentConfig(output_dimensionality=1536),
-    )
-
-    if not response.embeddings:
-        raise ValueError("임베딩 결과가 비어 있습니다.")
-
-    values = response.embeddings[0].values
-    if not values:
-        raise ValueError("임베딩 값을 가져오지 못했습니다.")
-
-    return values
+def _create_embedding(client: OpenAI, title: str, text: str) -> list[float]:
+    """공지 제목과 청크 본문을 OpenRouter 임베딩 벡터로 변환한다."""
+    return create_embedding(client, f"title: {title} | text: {text}")
 
 def _save_chunk(
     supabase: Client ,
@@ -476,7 +489,7 @@ def upsert_to_vectorDB(
     if notices is None:
         raise ValueError("notices가 없습니다")
 
-    gemini_client = runtime.context.gemini_client
+    embedding_client = runtime.context.embedding_client
     supabase = runtime.context.supabase_client
     invalid_notice_ids = state.get("invalid_notice_ids", ())
 
@@ -488,7 +501,7 @@ def upsert_to_vectorDB(
         chunks = _split_text(notice.content, chunk_size=1000)
 
         for chunk_index, chunk in enumerate(chunks):
-            embedding = _create_embedding(gemini_client, notice.title, chunk)
+            embedding = _create_embedding(embedding_client, notice.title, chunk)
             _save_chunk(supabase, notice, chunk_index, chunk, embedding)
             saved_count += 1
 

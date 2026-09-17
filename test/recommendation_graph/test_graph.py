@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from google import genai
+from openai import OpenAI
 from supabase import Client
 
 from ai_graphs.recommendation_graph import nodes
@@ -11,22 +11,20 @@ from ai_graphs.recommendation_graph.graph import create_recommendation_graph
 from ai_graphs.shared.context import GraphContext
 
 
-class FakeGeminiModels:
-    """고정된 query 임베딩을 반환하는 Gemini models 대역."""
+class FakeEmbeddings:
+    """고정된 query 임베딩을 반환하는 OpenAI embeddings 대역."""
 
-    def embed_content(self, **kwargs: object) -> SimpleNamespace:
+    def create(self, **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(
-            embeddings=[
-                SimpleNamespace(values=[0.1] * 1536),
-            ],
+            data=[SimpleNamespace(embedding=[0.1] * 1536)],
         )
 
 
-class FakeGeminiClient:
-    """Recommendation Graph 테스트용 Gemini 클라이언트."""
+class FakeOpenAIClient:
+    """Recommendation Graph 테스트용 OpenRouter 클라이언트."""
 
     def __init__(self) -> None:
-        self.models = FakeGeminiModels()
+        self.embeddings = FakeEmbeddings()
 
 
 class FakeRpcRequest:
@@ -59,7 +57,7 @@ def _create_context(
     rows: list[dict[str, object]],
 ) -> GraphContext:
     return GraphContext(
-        gemini_client=cast(genai.Client, FakeGeminiClient()),
+        embedding_client=cast(OpenAI, FakeOpenAIClient()),
         supabase_client=cast(Client, FakeSupabaseClient(rows)),
     )
 
