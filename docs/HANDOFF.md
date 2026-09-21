@@ -1,8 +1,77 @@
 # 작업 인계 문서
 
-## 최신 라벨링 인계 (2026-09-17)
+## 최신 인계 (2026-09-21)
 
-아래 과거 진행 기록보다 이 절이 우선한다. 파일럿·holdout·1차 검수 원점수는 다시 채점하지 않는다. artifacts sqlite와 Grok 산출물은 삭제하지 않는다.
+아래 과거 진행 기록보다 이 절이 우선한다. 지표는 Notion `InfoHelper RAG 고도화(2)` 기준이다. 3,022 재라벨은 하지 않는다. 해시된 기존 TREC run 이름은 덮지 않는다.
+
+### 검색 산출물
+
+retrieval은 쿼리당 `QueryPrediction` JSONL과 manifest만 저장한다.
+
+- `runs/{name}.jsonl` — 한 줄에 쿼리 하나. `candidates`가 순위. Hybrid·벤치마크가 이걸 읽는다
+- `manifests/{name}.json` — 설정·해시. `prediction_file`이 위 jsonl을 가리킨다
+- 히트당 한 줄 TREC `{query_id, doc_id, rank, score}`는 새로 만들지 않는다
+- 같은 `--run-name`의 jsonl / manifest / 예전 `.predictions.jsonl`이 있으면 `FileExistsError`
+- 계약: `RAG_evaluation/retrieval/output-contract.md`
+
+시간 범위: 색인·파일 저장은 제외. 쿼리 임베딩·토큰화는 포함.
+
+| 검색기 | timing |
+|---|---|
+| Dense | `kind=measured`. `query_encoding_ms` 임베딩, `retrieval_ms` DB 검색 |
+| BM25 | `kind=measured`. `query_encoding_ms` 토큰화, `retrieval_ms` 점수·정렬 |
+| Hybrid | `kind=estimated`. `total_ms = max(Dense, BM25) + fusion_ms`. 비용은 두 원본 API 비용 합 |
+
+Dense 비용은 OpenRouter 쿼리 임베딩 USD만. BM25는 보통 0.
+
+실행은 프로젝트 루트, `conda activate infohelper`. 기존 v1 이름이 남아 있으므로 새 이름을 쓴다.
+
+```bash
+npx supabase start   # Dense만. Connection refused면 DB가 꺼진 것
+python RAG_evaluation/retrieval/semantic.py --run-name dense_fixed1000_qwen1536_v2
+python RAG_evaluation/retrieval/lexical.py --run-name bm25_kiwi_v2
+python RAG_evaluation/retrieval/hybrid.py \
+  --run-name hybrid_rrf60_saved_v2 \
+  --dense-run-name dense_fixed1000_qwen1536_v2 \
+  --bm25-run-name bm25_kiwi_v2
+python -m RAG_evaluation.benchmark.main dense_fixed1000_qwen1536_v2.jsonl
+```
+
+`python RAG_evaluation/benchmark/main.py`는 `ModuleNotFoundError: RAG_evaluation`이 난다. `-m`으로 실행한다.
+
+### 벤치마크
+
+- 코드: `schema/prediction.py` → `loader.py` → `evaluator.py` → `report.py`, 진입점 `main.py`
+- 정답: `dataset/labeling/pool_v1/qrels.txt`. negative query는 `eval_queries_80.jsonl`의 `type=no-match`
+- System: `kind=measured`와 `kind=estimated`를 한 p95에 섞지 않는다. 보고서는 `latency_kind`와 `p95 latency (ms, 실측|추정)`
+- `kind=null`인 `total_ms`는 지연시간에서 제외
+- 미평가 문서는 0점이 아니라 평가 중단
+
+### 로컬에서 한 일 (2026-09-21)
+
+- Dense v2는 로컬 Supabase + OpenRouter로 다시 돌렸다
+- `python -m RAG_evaluation.benchmark.main dense_fixed1000_qwen1536_v2.jsonl`은 `미평가 문서가 포함되어 있습니다`로 실패했다
+- 원인: `pool_v1`은 예전 `dense_fixed1000_qwen1536_v1` / `bm25_kiwi_v1` 풀이다. v2 임베딩이 그 밖 공고를 넣으면 벤치마크가 멈춘다
+- 품질 평가는 풀에 묶인 원본 순위를 예측 JSONL로 맞춘 파일로 해야 한다. v2는 시간·비용용이고, 새 공고를 쓰려면 그 쌍을 다시 라벨해야 한다
+- 기존 Dense 품질 숫자(임시 변환 1회): Recall@20 0.5718, Success@20 0.8125, nDCG@5 0.4910, P@5 0.4000, MRR@5 0.5956. 추천·System은 그때 미측정
+
+### 아직 안 한 것
+
+- 풀에 묶인 원본 TREC 세 run을 예측 JSONL로 바꿔 BM25·Hybrid 품질 baseline 보고서를 남기는 것. 변환 스크립트는 저장소에 없다
+- v2 품질 평가(미평가 문서 정책 또는 재라벨). 재라벨 3,022는 하지 않는다
+- 추천 threshold. `ranked = candidates`, `recommended=null`이 현재 retriever 상태다
+- `benchmark/README.md`는 비어 있다
+
+### 평가 규칙 (구현됨)
+
+- Candidate: `qrel >= 1`, Recall@20 / Success@20
+- Ranking: nDCG@5는 `0/1/2`와 gain `2^grade-1`, discount `log2(rank+1)` (sklearn식). Precision@5·MRR@5는 `qrel >= 1`. Precision@5 분모는 고정 5
+- Recommendation: `qrel == 2`. `recommended is None`이면 단계 전체 미실행
+- System: 같은 `kind`의 `total_ms`만 선형 보간 백분위. 비용은 `cost.usd` 평균
+
+## 라벨링 인계 (2026-09-17, 유효)
+
+파일럿·holdout·1차 검수 원점수는 다시 채점하지 않는다. artifacts sqlite와 Grok 산출물은 삭제하지 않는다.
 
 - 기준: `docs/labeling-guidelines.md` v1.4. 점수 0·1·2, 기준일 2026-09-07.
 - **검색 평가용 합본:** `RAG_evaluation/dataset/labeling/pool_v1/`
@@ -15,8 +84,6 @@
 - R7: 직무 질의는 메인이어야 2, 기술 질의는 실사용이면 메인 아니어도 2. 남은 검수 224에만 적용했고 파일럿·holdout은 이 규칙으로 재채점하지 않았다.
 - 라벨 웹은 꺼 둔 상태다. 다시 켜려면 `python -m uvicorn RAG_evaluation.labeling.app:app --host 127.0.0.1 --port 8765`. `/` 파일럿, `/holdout`, `/review` 353, `/audit` 50, `/holdout-align`.
 - GitHub: `dataset/corpus.jsonl`과 `dataset/queries/`는 공개 평가 입력이다. `artifacts/`와 `dataset/zighang/` 수집 원본·DB는 올리지 않는다. 올려도 되는 것은 라벨링 코드·테스트·기준 문서·`pilot_aligned_v2`·`pool_v1`. `compare_agent.py`는 Downloads 경로, `first_pass.py`는 Gemini용이므로 고치기 전엔 커밋하지 않는 편이 낫다.
-
-다음 세션: `pool_v1/qrels.txt`로 nDCG@10 / Recall@10 / MRR@10 벤치마크를 구현하고 Dense·BM25·Hybrid baseline을 기록한다. 3,022 재라벨은 하지 않는다.
 
 ## 완료된 작업
 
@@ -181,7 +248,7 @@
   - 목록·상세 규칙을 생성하고 `active/passed` 상태로 전환했다. 목록 규칙은 `main .grid > a`, 상세 규칙은 `main > h1`과 `.tiptap.ProseMirror`다.
   - active 규칙을 DB에서 읽어 목록과 상세 3개에 읽기 전용으로 적용했다. 목록 20개, 상세 제목·본문 3개(556자, 466자, 4,804자)를 성공적으로 추출했다.
   - 현재 `infinite_scroll`은 `max_scroll_steps=2`라 전체 공고 corpus 수집에는 쓰지 않는다.
-- [ ] RAG 평가 데이터셋 (`feat/rag-eval-dataset`)
+- [x] RAG 평가 데이터셋 (`feat/rag-eval-dataset`, PR #8 병합)
   - 목표 순서: 데이터셋(qrels, TREC pooling) → 벤치마크 시스템 → 기존 RAG 평가 → query prefix → 청킹 → Retrieval → Reranker → dimension
   - 평가 corpus는 건국대 공지 대신 직행 IT·개발 채용공고 5,000건으로 만들었다.
   - 직행 목록 API는 `GET https://api.zighang.com/api/recruitments`이며 응답은 `{ timestamp, success, data, code, message }`, 실제 페이지 정보는 `data.content`, `data.page`, `data.size`, `data.totalElements`, `data.totalPages`, `data.last`에 있다.
@@ -209,6 +276,12 @@
   - 큰 불일치(0↔2)는 5건이다. 보안 직무의 범위, 신입 전용과 신입·경력 공동 채용, 경력 최소 연수, `9월 14일 이전`의 당일 포함 여부가 핵심 원인이다. 사람 라벨은 변경하지 않았다.
   - 파일럿 120·holdout 120·1차 2782 라벨이 끝났고 합본은 `dataset/labeling/pool_v1/`이다. 사람 전수 확정은 아니다.
   - 라벨링 UI: `/` 파일럿, `/holdout`, `/review`, `/audit`, `/holdout-align`. 서버는 종료됨.
+- [x] 벤치마크 시스템 1차 구현 (`feat/rag-eval-benchmark`, `352efdc`)
+  - Notion 고도화(2) 단계 지표를 코드로 넣었고 Dense 임시 입력 1회 평가까지 성공했다.
+- [x] retrieval 예측 JSONL 저장과 Hybrid 입력 전환 (미커밋)
+  - `runs/{name}.jsonl` + manifest만 저장. Hybrid는 `candidates`로 RRF.
+  - 벤치마크는 `timing.kind`를 구분해 실측·추정을 섞지 않는다.
+  - 상세는 상단「최신 인계」.
 - [ ] 수집 데이터 품질 후속 정리
   - 이미지·첨부 중심 공지는 `div.view-con`에 텍스트가 없어 상세 Rule에서 제외된다.
   - 상세 Rule 적용 후 SES를 포함한 전체 재발송 E2E는 추천 후보가 0개여서 다시 검증하지 않았다. 이전 목록 Rule 기준 SES 발송과 중복 발송 이력은 확인했다.
@@ -218,18 +291,18 @@
 - [ ] 사용자·구독 관리
   - 당장 구현하지 않고 수집·RAG 딥다이브 이후 진행한다
   - `users`, `subscriptions`, `user_preferences`, `recommendation_feedback`를 최소 범위로 구성할 예정이다
-- [ ] RAG 딥다이브 준비
-  - 현재 1,000자 고정 청킹, Dense Search, 유사도 0.65, 자체 점수 공식을 Baseline으로 고정한다
-  - 직행 채용 pool 3,022 qrels는 `dataset/labeling/pool_v1/`에 있다. 건국대 공지·사용자 프로필 정답은 없다.
-  - Precision@K, Recall@K, nDCG@K, 추천 없음 정확도, 지연시간을 기준으로 개선안을 비교할 예정이다
+- [ ] RAG 딥다이브
+  - 운영 Baseline은 1,000자 고정 청킹, Dense Search, 유사도 0.65, 자체 점수 공식이다.
+  - 평가 정답은 `pool_v1` 3,022쌍. 건국대 공지·사용자 프로필 정답은 없다.
+  - 비교 지표는 Notion 고도화(2): Recall@20, nDCG@5, 추천 Precision, p95 latency. Dense 숫자만 있다.
 
 ## 다음에 해야 할 작업
 
-1. `pool_v1/qrels.txt`로 nDCG@10, Recall@10, MRR@10 벤치마크를 구현하고 Dense·BM25·Hybrid baseline을 기록한다. 3,022 재라벨은 하지 않는다.
-2. 더 깊은 Dense·BM25 후보 또는 새 검색기를 넣을지는 벤치마크 이후에 결정한다. Hybrid는 현재 top-20에서 새 후보를 추가하지 않는다. corpus를 임의로 덮어쓰지 않는다.
-3. 라벨링 코드·`pilot_aligned_v2`·`pool_v1` GitHub 커밋은 사용자가 요청할 때만 한다. `dataset/corpus.jsonl`과 `dataset/queries/`는 포함하고, `artifacts/`와 `dataset/zighang/` 수집 원본·DB는 제외한다.
-4. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
-5. 이후 청킹, Hybrid Search, metadata filter, reranker, dimensions를 한 번에 하나씩 비교한다.
+1. 풀에 묶인 원본 `dense_fixed1000_qwen1536_v1` / `bm25_kiwi_v1` / `hybrid_rrf60_saved_v1`을 예측 JSONL로 바꿔 품질 baseline을 남긴다. 그 파일은 덮지 말고 새 이름으로 변환한다.
+2. v2 run의 시간·비용 보고서는 품질과 분리해서 볼 것. 미평가 문서를 0점으로 넣지 않는다.
+3. 3,022 재라벨은 하지 않는다. corpus를 임의로 덮어쓰지 않는다.
+4. 이후 한 변수씩: query prefix → 청킹 → Retrieval → Reranker → dimension.
+5. ECS/SSM은 아직 `GOOGLE_API_KEY`다. 배포 전에 `OPENROUTER_API_KEY`로 바꿔야 한다.
 6. Crawl4AI `on_page_context_created`와 Playwright `page.route()`로 redirect·JavaScript 이동·서브리소스 SSRF 요청 가드를 완성한다.
 
 ## 중기 로드맵
@@ -379,22 +452,9 @@ users 1 ── N subscriptions N ── 1 sources
 
 ## 마지막 상태
 
-- 브랜치: `feat/rag-eval-dataset` (origin보다 1 커밋 ahead)
-- 마지막 커밋: `7fda3a8 feat: 라벨링 파일럿 기준 및 데이터셋 추가`
-- `RAG_evaluation/artifacts/`와 `dataset/zighang/`는 gitignore. 미커밋: 라벨링 UI·export_pool·`pilot_aligned_v2`·`pool_v1`·기준 v1.4·테스트. 커밋은 사용자가 요청하기 전에는 하지 않는다.
-- 이전 임베딩 단계 검증: `pytest test/rag_evaluation/test_fixed_character.py test/integrations/test_clients.py -q` 15개 통과, `supabase db lint --local` 통과, 실제 로컬 DB 제약·권한 롤백 검증 통과. OpenRouter batch 128 입력으로 전체 5,603개 청크 임베딩을 완료했다.
+- 브랜치: `feat/rag-eval-benchmark` (미커밋 있음)
+- 마지막 커밋: `352efdc feat:benchmark 구현`
+- `RAG_evaluation/artifacts/`와 `dataset/zighang/`는 gitignore. v1 TREC run과 v2 예측 run, 보고서는 로컬에만 있다.
+- 최신 검증: `pytest test/rag_evaluation/test_retrieval.py test/rag_evaluation/test_hybrid.py test/rag_evaluation/test_evaluator.py test/rag_evaluation/test_benchmark_schema.py -q` 통과.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
-- 재개 curl:
-
-```bash
-curl --max-time 300 \
-  -X POST "http://127.0.0.1:8000/api/v1/sources/36701990-2c33-4979-801d-cbaf59c04154/crawl_rules" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "list_crawl_mode": "infinite_scroll",
-    "detail_crawl_mode": "dynamic"
-  }'
-```
-
-- 최신 검증: `pytest test/rag_evaluation/test_export_pool.py -q` 2개 통과. `pool_v1` 3,022쌍. 검색·Hybrid 테스트 24개는 이전에 통과했다.
-- 다음 세션: 이 절과 `docs/labeling-guidelines.md` v1.4, `RAG_evaluation/dataset/labeling/pool_v1/manifest.json`을 읽고 `qrels.txt`로 Dense·BM25·Hybrid baseline 벤치마크를 구현한다. 3,022 재라벨은 하지 않는다.
+- 다음 세션: 상단「최신 인계」를 읽고 원본 풀 run을 예측 JSONL로 변환해 품질 baseline을 남긴다. 해시된 기존 run은 덮지 않는다. 3,022 재라벨은 하지 않는다.

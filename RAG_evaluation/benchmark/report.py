@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RAG_evaluation.benchmark.schema import BenchmarkReport
+from RAG_evaluation.benchmark.schema import BenchmarkReport, SystemMetrics
 
 
 def _format(value: float | None, missing: str = '계산 불가', digits: int = 4) -> str:
@@ -15,6 +15,13 @@ def _format(value: float | None, missing: str = '계산 불가', digits: int = 4
 def _escape(value: str) -> str:
     """Markdown 표의 구분 문자와 줄바꿈을 이스케이프한다."""
     return value.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('|', '&#124;').replace('\n', ' ').replace('\r', ' ').replace('`', '&#96;')
+
+
+def _latency_kind_label(system: SystemMetrics | None) -> str:
+    """보고서 표에 쓸 지연시간 산출 방식 이름을 반환한다."""
+    if system is None or system.latency_kind is None:
+        return '미측정'
+    return {'measured': '실측', 'estimated': '추정'}[system.latency_kind]
 
 
 def render_markdown(report: BenchmarkReport) -> str:
@@ -29,8 +36,8 @@ def render_markdown(report: BenchmarkReport) -> str:
         ('Recommendation Decision', 'Primary', 'Precision', _format(recommendation.precision) if recommendation else '미실행'),
         ('Recommendation Decision', 'Secondary', 'Recall', _format(recommendation.recall) if recommendation else '미실행'),
         ('Recommendation Decision', 'Secondary', 'Negative-query accuracy', _format(recommendation.negative_query_accuracy) if recommendation else '미실행'),
-        ('System / Serving', 'Primary', 'p95 latency (ms)', _format(system.p95_latency_ms, '미측정') if system else '미측정'),
-        ('System / Serving', 'Secondary', 'p50 latency (ms)', _format(system.p50_latency_ms, '미측정') if system else '미측정'),
+        ('System / Serving', 'Primary', f'p95 latency (ms, {_latency_kind_label(system)})', _format(system.p95_latency_ms, '미측정') if system else '미측정'),
+        ('System / Serving', 'Secondary', f'p50 latency (ms, {_latency_kind_label(system)})', _format(system.p50_latency_ms, '미측정') if system else '미측정'),
         ('System / Serving', 'Secondary', 'cost/query (USD)', _format(system.mean_cost_usd_per_query, '미측정', 8) if system else '미측정'),
     )
     lowest = sorted(
@@ -50,6 +57,7 @@ def render_markdown(report: BenchmarkReport) -> str:
         f'| Recall@20 유효 쿼리 | {sum(item.candidate.recall_at_20 is not None for item in report.per_query)} |',
         f'| nDCG@5 유효 쿼리 | {sum(item.ranking.ndcg_at_5 is not None for item in report.per_query)} |',
         f'| 평가된 negative query | {recommendation.negative_query_count if recommendation else 0} |',
+        f'| 시간 측정 방식 | {_latency_kind_label(system)} |',
         f'| 시간 측정 표본 | {system.latency_sample_count if system else 0} |',
         f'| 비용 측정 표본 | {system.cost_sample_count if system else 0} |',
         '', '## 평가 결과', '',
@@ -69,7 +77,7 @@ def render_markdown(report: BenchmarkReport) -> str:
         '- Precision@5는 반환 문서가 부족해도 분모 5를 사용한다.',
         '- 추천 결과가 있는 쿼리만 추천 지표에 포함한다.',
         '- negative query는 별도 지정하며 해당 qrels는 모두 0점이어야 한다.',
-        '- 지연시간은 측정된 total_ms의 선형 보간 백분위수이며 비용은 측정된 값의 평균이다.',
+        '- 지연시간은 kind가 있는 total_ms의 선형 보간 백분위수이며 실측과 추정을 섞지 않는다. 비용은 측정된 값의 평균이다.',
         '- 미실행·미측정·계산 불가는 실제 0점과 다르다.', '',
     ))
 

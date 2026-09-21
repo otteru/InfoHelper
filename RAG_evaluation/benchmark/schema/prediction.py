@@ -1,6 +1,6 @@
 """벤치마크 입력용 쿼리별 검색 예측 스키마."""
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,17 +22,23 @@ class RecommendedDoc(BaseModel):
 
 
 class Timing(BaseModel):
-    """쿼리 한 건의 단계별 지연 시간(ms)."""
+    """쿼리 한 건의 단계별 시간과 전체 시간의 측정 방식(ms)."""
 
-    model_config = ConfigDict(frozen=True, extra='forbid')
-    embedding_ms: float | None = Field(default=None, ge=0)
+    model_config = ConfigDict(frozen=True, extra='forbid', allow_inf_nan=False)
+    kind: Literal['measured', 'estimated'] | None = Field(
+        default=None, description='total_ms의 산출 방식. null은 기존 데이터의 방식 미상.',
+    )
+    query_encoding_ms: float | None = Field(
+        default=None, ge=0, description='쿼리 임베딩·검증 또는 정규화·토큰화 시간.',
+    )
     retrieval_ms: float | None = Field(default=None, ge=0)
+    fusion_ms: float | None = Field(default=None, ge=0, description='RRF 등 결과 결합에 걸린 실측 시간.')
     rerank_ms: float | None = Field(default=None, ge=0)
     total_ms: float | None = Field(default=None, ge=0)
 
 
 class Cost(BaseModel):
-    """쿼리 한 건의 처리 비용."""
+    """쿼리 한 건의 검색에 필요한 API 비용(USD, 인프라 비용 제외)."""
 
     model_config = ConfigDict(frozen=True, extra='forbid')
     usd: float = Field(ge=0, allow_inf_nan=False)

@@ -1,6 +1,6 @@
 """단계별 평가 지표와 벤치마크 보고서 스키마."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,12 +39,15 @@ class RecommendationMetrics(MetricModel):
 
 
 class SystemMetrics(MetricModel):
-    """쿼리별 실측값을 집계한 검색 전체 지연시간과 평균 비용."""
+    """한 산출 방식의 total_ms와 API 비용을 집계한 검색 지연시간."""
 
     p95_latency_ms: NonNegative | None = Field(description='Primary: end-to-end retrieval p95(ms)')
     p50_latency_ms: NonNegative | None = Field(description='Secondary: end-to-end retrieval p50(ms)')
     mean_cost_usd_per_query: NonNegative | None = Field(description='Secondary: 쿼리당 평균 비용(USD)')
     latency_sample_count: int = Field(ge=0)
+    latency_kind: Literal['measured', 'estimated'] | None = Field(
+        default=None, description='p50·p95에 사용한 total_ms 산출 방식. 표본이 없으면 null.',
+    )
     cost_sample_count: int = Field(ge=0)
 
 

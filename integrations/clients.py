@@ -1,4 +1,5 @@
 import os
+import math
 
 from openai import OpenAI
 from supabase import Client, create_client
@@ -28,6 +29,18 @@ def create_embedding(
     dimensions: int = EMBEDDING_DIMENSIONS,
 ) -> list[float]:
     """텍스트를 OpenRouter 임베딩 벡터로 변환한다."""
+    values, _ = create_embedding_with_cost(client, text, model=model, dimensions=dimensions)
+    return values
+
+
+def create_embedding_with_cost(
+    client: OpenAI,
+    text: str,
+    *,
+    model: str = EMBEDDING_MODEL,
+    dimensions: int = EMBEDDING_DIMENSIONS,
+) -> tuple[list[float], float | None]:
+    """임베딩 벡터와 응답에 명시된 OpenRouter API 비용을 반환한다."""
     response = client.embeddings.create(
         model=model,
         input=text,
@@ -41,7 +54,11 @@ def create_embedding(
     if not values:
         raise ValueError("임베딩 값을 가져오지 못했습니다.")
 
-    return values
+    usage = getattr(response, 'usage', None)
+    cost = getattr(usage, 'cost', None)
+    if cost is not None and (type(cost) not in (int, float) or not math.isfinite(cost) or cost < 0):
+        raise ValueError('임베딩 API 비용은 유한한 0 이상의 숫자여야 합니다')
+    return values, float(cost) if cost is not None else None
 
 
 def create_supabase_client() -> Client:

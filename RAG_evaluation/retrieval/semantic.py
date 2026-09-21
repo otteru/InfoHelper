@@ -15,11 +15,12 @@ from supabase import Client
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from RAG_evaluation.benchmark.schema import Cost, Timing
 from RAG_evaluation.embedding.fixed_character import validate_embedding
 from RAG_evaluation.retrieval.common import (
     Inputs, argument_parser, collect_results, load_inputs, output_paths, save_results,
 )
-from integrations.clients import create_embedding, create_openrouter_client, create_supabase_client
+from integrations.clients import create_embedding_with_cost, create_openrouter_client, create_supabase_client
 
 
 def load_embedding_run(db: Client, name: str, inputs: Inputs, corpus_version: str) -> dict[str, Any]:
@@ -62,27 +63,42 @@ class DenseRetriever:
     run: dict[str, Any]
 
     def search(self, query: str, top_k: int) -> tuple[tuple[str, float], ...]:
-        """기존 쿼리 입력 형식으로 임베딩하고 공고별 최고 점수를 조회한다."""
+        """시간을 계측하며 검색하고 기존 호출부에 공고·점수만 반환한다."""
+        hits, _, _ = self.search_with_timing(query, top_k)
+        return hits
+
+    def search_with_timing(
+        self, query: str, top_k: int,
+    ) -> tuple[tuple[tuple[str, float], ...], Timing, Cost | None]:
+        """공고별 검색 결과와 실측 시간 및 쿼리 임베딩 API 비용을 반환한다."""
+        started = perf_counter()
         # 쿼리 임베딩
-        embedding = create_embedding(
+        embedding, cost_usd = create_embedding_with_cost(
             self.client, self.run['config']['query_template'].format(query=query),
             model=self.run['embedding_model'], dimensions=self.run['dimensions'],
         )
 
         validate_embedding(embedding, self.run['dimensions'])
+        encoding_finished = perf_counter()
 
         # 검증 및 retrieval
         rows = cast(list[dict[str, Any]], self.db.rpc('match_eval_documents', {
             'p_run_id': self.run['run_id'], 'p_query_embedding': embedding, 'p_top_k': top_k,
         }).execute().data)
 
-        return tuple((str(row['doc_id']), float(row['score'])) for row in rows)
+        hits = tuple((str(row['doc_id']), float(row['score'])) for row in rows)
+        finished = perf_counter()
+
+        return hits, Timing(
+            kind='measured',
+            query_encoding_ms=(encoding_finished - started) * 1000,
+            retrieval_ms=(finished - encoding_finished) * 1000,
+            total_ms=(finished - started) * 1000,
+        ), Cost(usd=cost_usd) if cost_usd is not None else None
 
 
 def main() -> None:
     """평가 Dense 검색을 실행해 run과 재현 설정을 저장한다."""
-    # 실행 시간 기록
-    started_at = perf_counter()
 
     # 커맨드라인 인자 파서
     # __doc__ -> 이 파일 맨 위의 주석으로 parser의 description으로 들어감
@@ -107,16 +123,16 @@ def main() -> None:
     run = load_embedding_run(db, args.embedding_run_name, inputs, args.corpus_version)
     retriever = DenseRetriever(db, create_openrouter_client(), run)
 
-    rows = collect_results(inputs, args.top_k, retriever.search)
+    predictions = collect_results(inputs, args.top_k, retriever.search_with_timing)
 
-    save_results(args, inputs, rows, {
+    save_results(args, inputs, predictions, {
         'retrieval_method': 'dense', 'embedding_run_id': run['run_id'],
         'embedding_run_name': run['name'], 'model': run['embedding_model'],
         'dimensions': run['dimensions'], 'embedding_config': run['config'],
         'similarity': 'cosine', 'chunk_aggregation': 'max', 'search_mode': 'exact',
         'rpc': 'match_eval_documents',
         'packages': {name: version(name) for name in ('openai', 'supabase')},
-    }, started_at, (
+    }, (
         Path(__file__), ROOT / 'RAG_evaluation/retrieval/common.py',
         ROOT / 'integrations/clients.py',
         ROOT / 'supabase/migrations/20260909010000_add_eval_dense_search.sql',

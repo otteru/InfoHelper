@@ -71,11 +71,13 @@ RAG_evaluation/artifacts/zighang_v1/
     └── bm25_kiwi_v1.json
 ```
 
-run의 한 줄은 `query_id`, `doc_id`, `rank`(1부터 시작), `score`다.
-manifest에는 입력·결과 파일 해시, corpus와 쿼리 수, top-k, 검색 설정,
-라이브러리 버전, 소스 파일 해시, 생성 시각, 전체 실행 시간을 저장한다.
+예측 파일 한 줄은 쿼리 하나의 `QueryPrediction`이다. `candidates`가 검색 순위다.
+manifest에는 입력·예측 파일 해시, corpus와 쿼리 수, top-k, 검색 설정,
+라이브러리 버전, 소스 파일 해시, 생성 시각을 저장한다.
 manifest의 `run_id`는 검색 결과 이름이고 `embedding_run_id`는 DB 임베딩 실험 UUID다.
-`elapsed_seconds`에는 로딩·색인·쿼리 임베딩 등이 포함되므로 순수 검색 지연시간이 아니다.
+`prediction_file`, `prediction_sha256`, `prediction_count`로 예측 파일을 연결한다.
+이 파일명을 benchmark에 전달하면 시간 지표를 평가할 수 있다.
+Hybrid는 이 예측 파일의 `candidates`로 RRF한다. 히트당 한 줄이던 TREC 형식은 쓰지 않는다.
 
 모든 쿼리를 검증한 뒤 결과와 manifest를 저장한다. 기존 이름은 덮어쓰지 않는다.
 완료 manifest가 없거나 결과 파일의 해시가 일치하지 않으면 풀링 입력으로 사용하지 않는다.
@@ -96,3 +98,14 @@ supabase db lint --local
 
 라이브러리 참고: [rank-bm25](https://github.com/dorianbrown/rank_bm25),
 [Kiwi Python API](https://github.com/bab2min/kiwipiepy).
+
+## Hybrid 시간·비용
+
+Hybrid는 manifest에 연결된 원본 `runs/<run_name>.jsonl`을 읽고 해시·쿼리·후보를 검증한 뒤 RRF한다.
+예측 파일이 없는 구형 TREC run은 융합하지 않는다.
+RRF 순위 목록 준비 후 점수 계산·정렬·top-k 선택까지 `fusion_ms`를 실측한다.
+각 쿼리의 `total_ms = max(Dense.total_ms, BM25.total_ms) + fusion_ms`이며
+`kind=estimated`로 저장한다. 원본 시간 중 하나라도 없으면 total_ms는 null이다.
+API 비용은 두 원본 값이 모두 있을 때만 합산한다. 저장 결과 재사용의 추가 과금이 아닌
+원본 검색을 각각 한 번 실행할 때의 비용이다. Hybrid도 `runs/<run_name>.jsonl`을 저장한다.
+보고서의 `latency_kind=estimated`가 Hybrid 시간 추정임을 표시한다.

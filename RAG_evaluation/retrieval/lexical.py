@@ -16,6 +16,7 @@ from rank_bm25 import BM25Okapi
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from RAG_evaluation.benchmark.schema import Timing
 from RAG_evaluation.retrieval.common import (
     Inputs, argument_parser, collect_results, load_inputs, output_paths, save_results,
 )
@@ -62,19 +63,34 @@ class BM25Retriever:
         return cls(tuple(str(doc.id) for doc in documents), kiwi, BM25Okapi(tokens, k1=k1, b=b, epsilon=epsilon))
 
     def search(self, query: str, top_k: int) -> tuple[tuple[str, float], ...]:
-        """쿼리와 공고를 같은 방식으로 토큰화하고 점수·ID순으로 정렬한다."""
+        """시간을 계측하며 검색하고 기존 호출부에 공고·점수만 반환한다."""
+        hits, _ = self.search_with_timing(query, top_k)
+        return hits
+
+    def search_with_timing(
+        self, query: str, top_k: int,
+    ) -> tuple[tuple[tuple[str, float], ...], Timing]:
+        """쿼리 토큰화부터 최종 top-k 선택까지의 실측 시간과 검색 결과를 반환한다."""
+        started = perf_counter()
         tokens = token_forms(self.kiwi.tokenize(normalize(query)))
+        encoding_finished = perf_counter()
 
         scores = self.index.get_scores(tokens)
 
         hits = tuple((doc_id, float(score)) for doc_id, score in zip(self.doc_ids, scores, strict=True))
         # 1순위: score 내림차순 2순위: doc_id 오름차순
-        return tuple(sorted(hits, key=lambda hit: (-hit[1], hit[0]))[:top_k])
+        results = tuple(sorted(hits, key=lambda hit: (-hit[1], hit[0]))[:top_k])
+        finished = perf_counter()
+        return results, Timing(
+            kind='measured',
+            query_encoding_ms=(encoding_finished - started) * 1000,
+            retrieval_ms=(finished - encoding_finished) * 1000,
+            total_ms=(finished - started) * 1000,
+        )
 
 
 def main() -> None:
     """BM25 검색을 실행하고 토크나이저·파라미터와 함께 결과를 저장한다."""
-    started_at = perf_counter()
     parser = argument_parser(__doc__ or "lexical retrieval", 'bm25_kiwi_v1')
     parser.add_argument('--k1', type=float, default=1.5)
     parser.add_argument('--b', type=float, default=0.75)
@@ -86,8 +102,8 @@ def main() -> None:
 
     retriever = BM25Retriever.build(inputs, args.k1, args.b, args.epsilon)
 
-    rows = collect_results(inputs, args.top_k, retriever.search)
-    save_results(args, inputs, rows, {
+    predictions = collect_results(inputs, args.top_k, retriever.search_with_timing)
+    save_results(args, inputs, predictions, {
         'retrieval_method': 'bm25', 'algorithm': 'BM25Okapi',
         'parameters': {'k1': args.k1, 'b': args.b, 'epsilon': args.epsilon},
         'document_template': '{title}\n{content}', 'chunking': None,
@@ -96,7 +112,7 @@ def main() -> None:
                       'stopwords': None, 'custom_dictionary': None},
         'zero_score_policy': 'keep_for_pooling',
         'packages': {name: version(name) for name in ('kiwipiepy', 'kiwipiepy-model', 'rank-bm25', 'numpy')},
-    }, started_at, (Path(__file__), ROOT / 'RAG_evaluation/retrieval/common.py'))
+    }, (Path(__file__), ROOT / 'RAG_evaluation/retrieval/common.py'))
 
 
 if __name__ == '__main__':

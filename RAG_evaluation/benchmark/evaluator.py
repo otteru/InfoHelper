@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Mapping, Sequence
 from statistics import fmean
+from typing import Literal
 
 from RAG_evaluation.benchmark import metrics
 from RAG_evaluation.benchmark.schema import (
@@ -55,12 +56,36 @@ def _evaluate_recommendations(
     )
 
 
-def _evaluate_system(predictions: Sequence[QueryPrediction]) -> SystemMetrics | None:
-    """실측 total_ms와 비용이 있는 쿼리만 모아 성능 지표를 계산한다."""
-    latencies = tuple(
+def _latency_samples(
+    predictions: Sequence[QueryPrediction],
+) -> tuple[tuple[float, ...], Literal['measured', 'estimated'] | None]:
+    """kind가 있는 total_ms만 모으고 실측과 추정이 섞이면 거절한다."""
+    measured = tuple(
         prediction.timing.total_ms for prediction in predictions
-        if prediction.timing is not None and prediction.timing.total_ms is not None
+        if prediction.timing is not None
+        and prediction.timing.kind == 'measured'
+        and prediction.timing.total_ms is not None
     )
+    
+    estimated = tuple(
+        prediction.timing.total_ms for prediction in predictions
+        if prediction.timing is not None
+        and prediction.timing.kind == 'estimated'
+        and prediction.timing.total_ms is not None
+    )
+    
+    if measured and estimated:
+        raise ValueError('실측과 추정 지연시간을 한 보고서에서 섞을 수 없습니다')
+    if measured:
+        return measured, 'measured'
+    if estimated:
+        return estimated, 'estimated'
+    return (), None
+
+
+def _evaluate_system(predictions: Sequence[QueryPrediction]) -> SystemMetrics | None:
+    """같은 kind의 total_ms와 비용이 있는 쿼리만 모아 성능 지표를 계산한다."""
+    latencies, latency_kind = _latency_samples(predictions)
     costs = tuple(prediction.cost.usd for prediction in predictions if prediction.cost is not None)
     if not latencies and not costs:
         return None
@@ -69,6 +94,7 @@ def _evaluate_system(predictions: Sequence[QueryPrediction]) -> SystemMetrics | 
         p50_latency_ms=metrics.latency_percentile(latencies, 50),
         mean_cost_usd_per_query=metrics.mean_cost_per_query(costs),
         latency_sample_count=len(latencies),
+        latency_kind=latency_kind,
         cost_sample_count=len(costs),
     )
 
