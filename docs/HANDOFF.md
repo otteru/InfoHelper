@@ -1,73 +1,81 @@
 # 작업 인계 문서
 
-## 최신 인계 (2026-09-21)
+## 최신 인계 (2026-09-22)
 
-아래 과거 진행 기록보다 이 절이 우선한다. 지표는 Notion `InfoHelper RAG 고도화(2)` 기준이다. 3,022 재라벨은 하지 않는다. 해시된 기존 TREC run 이름은 덮지 않는다.
+이 절이 아래 과거 기록보다 우선한다. 현재 단계는 RAG 벤치마크 브랜치 merge 전 검토이며, merge·커밋·push는 아직 하지 않았다.
 
-### 검색 산출물
+### 완료된 작업과 결정
 
-retrieval은 쿼리당 `QueryPrediction` JSONL과 manifest만 저장한다.
+- Dense·BM25·Hybrid는 쿼리별 `QueryPrediction` JSONL과 manifest를 저장한다. 기존 TREC run과 해시된 파일을 덮어쓰지 않는다.
+- benchmark 지표는 Notion `InfoHelper RAG 고도화(2)`의 최종 정의를 따른다.
+  - https://app.notion.com/p/3de210261e9580b28070f0aa1e3483e9
+  - Candidate: qrel >= 1, Recall@20 / Success@20.
+  - Ranking: nDCG@5는 gain 2^grade-1, Precision@5·MRR@5는 qrel >= 1. Precision 분모는 고정 5.
+  - Recommendation: qrel == 2. recommended=null은 미실행.
+  - System: measured와 estimated를 섞지 않고 total_ms의 p50·p95를 집계한다. kind=null은 제외한다.
+- 사용자 결정: BM25 비용 null은 의도된 정책이다. 수정 대상으로 반복 제안하지 않는다. 현재 Hybrid도 원본 비용 하나가 null이면 비용 null이다.
+- 사용자 결정: corpus는 앞으로 갱신하지 않는다. find_unjudged의 검색 당시 원문 해시 대조 기능은 추가하지 않기로 했다.
+- pool은 benchmark에서만 사용한다. 새 쌍은 기존 기준으로 라벨링해 다음 pool에 추가하고, 이전·신규 run을 같은 pool로 재평가한다. retrieval 재실행은 필요 없다.
+- pool_v2 생성 확인 완료: 기존 3,022쌍 점수·출처 보존 + 신규 13쌍 = 3,035쌍. 중복 없음, judgments와 qrels 및 manifest 해시 일치.
+  - 0점 2,061 / 1점 198 / 2점 776.
+  - 추가 라벨은 assistant_unjudged이며 사람 확정이 아니다. 근거는 additions.jsonl에 있다. 이번 검수에서 개별 라벨을 재심사하지 않았다.
+  - 기준 문서 v1.4, 평가 기준일 2026-09-07 유지. 기존 3,022쌍 재라벨 금지.
+- `find_unjudged.py` 구현: candidates·ranked·recommended의 쿼리–문서 합집합에서 기존 qrels에 없는 쌍을 추출한다.
+  - 출력: artifacts/zighang_v1/labeling_pending/<pool>/<run>_<시각>/pairs.jsonl 및 manifest.json.
+  - 질문·공고 원문과 메타데이터를 제공하며 점수·순위는 제외한다. 신규 0건이면 파일을 생성하지 않고, 원문 누락이면 실패한다.
+- `benchmark/main.py`: POOL_VERSION="v2". f-string 누락 수정 완료. 아직 --pool-version CLI는 없다.
+- `report.py`: benchmark_reports/<pool>/<run>_<시각>/result.json 및 report.md에 저장한다. 파일명에는 pool 버전이 없고 폴더에만 있다.
+- 공통 임베딩 테스트의 Mock 응답에 usage=None을 명시해 비용 검증 오류 수정.
+- CI에 .[dev,evaluation] 설치, RAG 문법 검사·테스트 추가. 로컬 자료 의존 test_labeling.py, test_export_pool.py, Git 제외 test_first_pass.py는 CI에서 제외한다.
 
-- `runs/{name}.jsonl` — 한 줄에 쿼리 하나. `candidates`가 순위. Hybrid·벤치마크가 이걸 읽는다
-- `manifests/{name}.json` — 설정·해시. `prediction_file`이 위 jsonl을 가리킨다
-- 히트당 한 줄 TREC `{query_id, doc_id, rank, score}`는 새로 만들지 않는다
-- 같은 `--run-name`의 jsonl / manifest / 예전 `.predictions.jsonl`이 있으면 `FileExistsError`
-- 계약: `RAG_evaluation/retrieval/output-contract.md`
+### merge 전 검토 및 해결 상태
 
-시간 범위: 색인·파일 저장은 제외. 쿼리 임베딩·토큰화는 포함.
+- `export_pool_v2.py`는 현재 삭제된 상태다. 사용자는 새 pool을 AI에게 요청해 만들고 완성된 데이터를 보관하는 방식을 선택했다. 버전별 생성 스크립트 일반화는 불필요하다.
+- 삭제된 export_pool_v2를 import하던 test/rag_evaluation/test_export_pool_v2.py의 테스트 2개를 사용자 요청으로 삭제했다. CI의 해당 ignore도 제거해 ImportError를 해결했다.
+- 완성된 pool_v2의 정합성은 앞선 검수에서 확인했다. 생성 스크립트 의존 테스트를 대체하는 새 테스트는 이번에 추가하지 않았다.
+- 후속 사용자 요청으로 문제 테스트 삭제와 CI 제외 목록 정리까지 완료했다.
+- 관련 미커밋 수정·미추적 pool_v2 및 find_unjudged 파일을 커밋에 포함해야 한다. 현재 HEAD만 merge하면 이 변경은 포함되지 않는다.
 
-| 검색기 | timing |
-|---|---|
-| Dense | `kind=measured`. `query_encoding_ms` 임베딩, `retrieval_ms` DB 검색 |
-| BM25 | `kind=measured`. `query_encoding_ms` 토큰화, `retrieval_ms` 점수·정렬 |
-| Hybrid | `kind=estimated`. `total_ms = max(Dense, BM25) + fusion_ms`. 비용은 두 원본 API 비용 합 |
+### 검증 결과
 
-Dense 비용은 OpenRouter 쿼리 임베딩 USD만. BM25는 보통 0.
+- 이전 세션: 삭제 전 로컬 테스트 237개 통과, pool_v2로 세 검색기 평가 성공.
+- 최신(2026-09-22): CI와 같은 대상 테스트 126개 통과(RAG 90개 + 기존 서비스 36개).
+- 최신 넓은 테스트: RAG·API·repository·schema·service·integration·ingestion·recommendation·delivery 235개 통과. 네트워크 실행 위험이 있는 mvp 실험 테스트는 실행하지 않았다.
+- Git diff --check 통과. GitHub 원격 CI는 아직 실행·확인하지 않았다.
+- 로컬 artifacts 없는 임시 복사본에서 RAG CI 대상 90개 통과 확인 이력 있음.
+- 실제 외부 API·DB·배포·이메일 발송은 검증 과정에서 실행하지 않았다.
 
-실행은 프로젝트 루트, `conda activate infohelper`. 기존 v1 이름이 남아 있으므로 새 이름을 쓴다.
+### pool_v2 기준 품질 결과
+
+| Run | Recall@20 | nDCG@5 |
+|---|---:|---:|
+| dense_fixed1000_qwen1536_v2 | 0.5721 | 0.4894 |
+| bm25_kiwi_v2 | 0.6534 | 0.6106 |
+| hybrid_rrf60_saved_v2 | 0.7072 | 0.6241 |
+
+Dense v2의 기존 미평가 13쌍 오류는 pool_v2에서 해소됐다. 과거 pool_v1 숫자와 직접 비교하지 않는다. Hybrid 시간은 max(Dense.total_ms, BM25.total_ms)+fusion_ms 추정값이다.
+
+### 실행 명령 (프로젝트 루트)
 
 ```bash
-npx supabase start   # Dense만. Connection refused면 DB가 꺼진 것
-python RAG_evaluation/retrieval/semantic.py --run-name dense_fixed1000_qwen1536_v2
-python RAG_evaluation/retrieval/lexical.py --run-name bm25_kiwi_v2
-python RAG_evaluation/retrieval/hybrid.py \
-  --run-name hybrid_rrf60_saved_v2 \
-  --dense-run-name dense_fixed1000_qwen1536_v2 \
-  --bm25-run-name bm25_kiwi_v2
+conda activate infohelper
+# 새 run에 미평가 쌍이 있을 때 기준 pool과 비교
+python -m RAG_evaluation.labeling.find_unjudged dense_fixed1000_qwen1536_v2.jsonl --pool-version pool_v1
+# AI에게 기준 문서와 pairs.jsonl로 라벨링·다음 pool 생성을 요청
+# benchmark/main.py의 POOL_VERSION을 선택한 뒤 저장된 run 평가
 python -m RAG_evaluation.benchmark.main dense_fixed1000_qwen1536_v2.jsonl
+python -m RAG_evaluation.benchmark.main bm25_kiwi_v2.jsonl
+python -m RAG_evaluation.benchmark.main hybrid_rrf60_saved_v2.jsonl
 ```
 
-`python RAG_evaluation/benchmark/main.py`는 `ModuleNotFoundError: RAG_evaluation`이 난다. `-m`으로 실행한다.
+pool_v1 비교는 13쌍, pool_v2 비교는 신규 0쌍이다. 위 find_unjudged 명령은 라벨링이나 pool 생성을 자동 실행하지 않는다.
 
-### 벤치마크
+### 후속 과제와 문서 차이
 
-- 코드: `schema/prediction.py` → `loader.py` → `evaluator.py` → `report.py`, 진입점 `main.py`
-- 정답: `dataset/labeling/pool_v1/qrels.txt`. negative query는 `eval_queries_80.jsonl`의 `type=no-match`
-- System: `kind=measured`와 `kind=estimated`를 한 p95에 섞지 않는다. 보고서는 `latency_kind`와 `p95 latency (ms, 실측|추정)`
-- `kind=null`인 `total_ms`는 지연시간에서 제외
-- 미평가 문서는 0점이 아니라 평가 중단
-
-### 로컬에서 한 일 (2026-09-21)
-
-- Dense v2는 로컬 Supabase + OpenRouter로 다시 돌렸다
-- `python -m RAG_evaluation.benchmark.main dense_fixed1000_qwen1536_v2.jsonl`은 `미평가 문서가 포함되어 있습니다`로 실패했다
-- 원인: `pool_v1`은 예전 `dense_fixed1000_qwen1536_v1` / `bm25_kiwi_v1` 풀이다. v2 임베딩이 그 밖 공고를 넣으면 벤치마크가 멈춘다
-- 품질 평가는 풀에 묶인 원본 순위를 예측 JSONL로 맞춘 파일로 해야 한다. v2는 시간·비용용이고, 새 공고를 쓰려면 그 쌍을 다시 라벨해야 한다
-- 기존 Dense 품질 숫자(임시 변환 1회): Recall@20 0.5718, Success@20 0.8125, nDCG@5 0.4910, P@5 0.4000, MRR@5 0.5956. 추천·System은 그때 미측정
-
-### 아직 안 한 것
-
-- 풀에 묶인 원본 TREC 세 run을 예측 JSONL로 바꿔 BM25·Hybrid 품질 baseline 보고서를 남기는 것. 변환 스크립트는 저장소에 없다
-- v2 품질 평가(미평가 문서 정책 또는 재라벨). 재라벨 3,022는 하지 않는다
-- 추천 threshold. `ranked = candidates`, `recommended=null`이 현재 retriever 상태다
-- `benchmark/README.md`는 비어 있다
-
-### 평가 규칙 (구현됨)
-
-- Candidate: `qrel >= 1`, Recall@20 / Success@20
-- Ranking: nDCG@5는 `0/1/2`와 gain `2^grade-1`, discount `log2(rank+1)` (sklearn식). Precision@5·MRR@5는 `qrel >= 1`. Precision@5 분모는 고정 5
-- Recommendation: `qrel == 2`. `recommended is None`이면 단계 전체 미실행
-- System: 같은 `kind`의 `total_ms`만 선형 보간 백분위. 비용은 `cost.usd` 평균
+- 추천 threshold와 reranker는 아직 없다. ranked=candidates, recommended=null.
+- benchmark/README.md는 비어 있다.
+- Notion의 Hybrid timing=null과 이전 비용 범위 설명, retrieval/output-contract.md의 BM25 비용 0 예시는 최신 구현·사용자 결정과 차이가 있다. 이번에는 외부 문서를 수정하지 않았다.
+- 관련 파일: benchmark/{main,report,metrics}.py, labeling/find_unjudged.py, dataset/labeling/pool_v2/, .github/workflows/pr-check.yml, test/rag_evaluation/test_find_unjudged.py.
 
 ## 라벨링 인계 (2026-09-17, 유효)
 
@@ -453,8 +461,8 @@ users 1 ── N subscriptions N ── 1 sources
 ## 마지막 상태
 
 - 브랜치: `feat/rag-eval-benchmark` (미커밋 있음)
-- 마지막 커밋: `352efdc feat:benchmark 구현`
+- 마지막 커밋: `6535a64 feat:retrieval을 benchmark 양식에 맞게 변경`
 - `RAG_evaluation/artifacts/`와 `dataset/zighang/`는 gitignore. v1 TREC run과 v2 예측 run, 보고서는 로컬에만 있다.
-- 최신 검증: `pytest test/rag_evaluation/test_retrieval.py test/rag_evaluation/test_hybrid.py test/rag_evaluation/test_evaluator.py test/rag_evaluation/test_benchmark_schema.py -q` 통과.
+- 최신 검증: 문제 테스트 삭제 후 로컬 검증 대상 235개 통과. CI 대상 126개 통과 이력. 상단 최신 인계 참조.
 - 로컬 API: `uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`
-- 다음 세션: 상단「최신 인계」를 읽고 원본 풀 run을 예측 JSONL로 변환해 품질 baseline을 남긴다. 해시된 기존 run은 덮지 않는다. 3,022 재라벨은 하지 않는다.
+- 다음 세션: 변경 파일을 확인하고 커밋·PR·merge를 진행한다(사용자 요청 시). 기존 pool·run 보존, 3,022쌍 재라벨 금지.
