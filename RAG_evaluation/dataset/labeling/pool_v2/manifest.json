@@ -1,0 +1,33 @@
+{
+  "dataset_version": "pool_v2",
+  "count": 3035,
+  "score_scale": [
+    0,
+    1,
+    2
+  ],
+  "score_counts": {
+    "1": 198,
+    "2": 776,
+    "0": 2061
+  },
+  "source_counts": {
+    "human_pilot": 120,
+    "grok_first_pass": 2429,
+    "human_review": 129,
+    "human_holdout": 120,
+    "assistant_unjudged": 13,
+    "assistant_review": 224
+  },
+  "all_human_confirmed": false,
+  "base_pool": "pool_v1",
+  "added_run": "dense_fixed1000_qwen1536_v2",
+  "note": "pool_v1 3,022쌍의 점수와 출처는 유지했다. dense_fixed1000_qwen1536_v2의 미평가 13쌍만 기준 1.4로 판정해 assistant_unjudged로 추가했다. 사람 확정이 아니며 근거는 additions.jsonl에만 있다.",
+  "source_hashes": {
+    "RAG_evaluation/dataset/labeling/pool_v1/judgments.jsonl": "27c5968a4b826f8cd112d09702fe6072eddc6024973b3d5a0dc51785a20e9519",
+    "RAG_evaluation/dataset/labeling/pool_v2/additions.jsonl": "2f3d6a91d4dbbdfe743f27ed2922201dc97a533d960e196f79678b7ee3883b2d",
+    "docs/labeling-guidelines.md": "32869728d4933b5405cfe06a12cca9b8afba2a6ecfccadce66fc6865cae3b162",
+    "RAG_evaluation/artifacts/zighang_v1/labeling_pending/pool_v1/dense_fixed1000_qwen1536_v2_20260922T113430313645Z/pairs.jsonl": "fd7820ea1071dc4e1ea0178e73ee81592b5eeb9e9189514f3d47029e7b82327c"
+  },
+  "data_sha256": "28798474d7f270d687f777b28a15fc57ec1d532a6422bcbeee42739817d320ef"
+}

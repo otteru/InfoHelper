@@ -52,7 +52,9 @@ def test_배치_응답_역순_복원(corpus: fc.Corpus) -> None:
 def test_공통_클라이언트_옵션_전달() -> None:
     """실험 모델과 차원이 실제 API 인자로 전달되는지 확인한다."""
     client = Mock()
-    client.embeddings.create.return_value.data = [SimpleNamespace(embedding=[1.0, 0.0])]
+    client.embeddings.create.return_value = SimpleNamespace(
+        data=[SimpleNamespace(embedding=[1.0, 0.0])], usage=None,
+    )
     create_embedding(client, 'input', model='test-model', dimensions=2)
     client.embeddings.create.assert_called_once_with(model='test-model', input='input', dimensions=2)
 

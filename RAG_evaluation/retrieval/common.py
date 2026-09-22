@@ -9,11 +9,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from RAG_evaluation.benchmark.schema import Cost, Hit, QueryPrediction, Timing
 from RAG_evaluation.embedding.fixed_character import Document
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,10 +50,13 @@ def load_inputs(corpus_path: Path, query_path: Path) -> Inputs:
 
     if not documents or len({doc.id for doc in documents}) != len(documents):
         raise ValueError('corpus가 비어 있거나 공고 ID가 중복됩니다')
+    
     if not queries or len({query.query_id for query in queries}) != len(queries):
         raise ValueError('쿼리가 비어 있거나 query_id가 중복됩니다')
+    
     if any(not query.query.strip() or not query.query_id.strip() for query in queries):
         raise ValueError('공백으로만 이루어진 쿼리 또는 query_id는 사용할 수 없습니다')
+    
     return Inputs(documents, queries, sha256(corpus_raw), sha256(query_raw))
 
 
@@ -70,7 +73,7 @@ def argument_parser(description: str, run_name: str) -> argparse.ArgumentParser:
     return parser
 
 
-def  output_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+def output_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     """출력 식별자를 검사하고 기존 결과 덮어쓰기를 실행 전에 막는다."""
     if not 1 <= args.top_k <= 1000:
         raise ValueError('top-k는 1~1000이어야 합니다')
@@ -80,26 +83,31 @@ def  output_paths(args: argparse.Namespace) -> tuple[Path, Path]:
             raise ValueError('버전과 run 이름은 영문·숫자·밑줄·하이픈만 사용할 수 있습니다')
 
     directory = args.output_dir / args.corpus_version
-    paths = (directory / 'runs' / f'{args.run_name}.jsonl',
-             directory / 'manifests' / f'{args.run_name}.json')
-
-    if any(path.exists() for path in paths):
+    run_path = directory / 'runs' / f'{args.run_name}.jsonl'
+    manifest_path = directory / 'manifests' / f'{args.run_name}.json'
+    leftover_predictions = directory / 'runs' / f'{args.run_name}.predictions.jsonl'
+    if any(path.exists() for path in (run_path, manifest_path, leftover_predictions)):
         raise FileExistsError('같은 이름의 결과가 있습니다. 새 --run-name을 사용하세요')
-    return paths
+    return run_path, manifest_path
 
 
 def collect_results(
-    inputs: Inputs, top_k: int, search: Callable[[str, int], tuple[tuple[str, float], ...]],
-) -> tuple[dict[str, Any], ...]:
-    """쿼리별 고유 공고 순위·점수를 검증하고 공통 결과 행을 생성한다."""
+    inputs: Inputs, top_k: int,
+    search: Callable[[str, int],
+                     tuple[tuple[tuple[str, float], ...], Timing]
+                     | tuple[tuple[tuple[str, float], ...], Timing, Cost | None]],
+) -> tuple[QueryPrediction, ...]:
+    """쿼리별 검색 결과와 계측값을 검증해 벤치마크 예측을 생성한다."""
 
     allowed = frozenset(str(doc.id) for doc in inputs.documents)
-    rows: tuple[dict[str, Any], ...] = ()
+    predictions: tuple[QueryPrediction, ...] = ()
 
     for index, query in enumerate(inputs.queries, start=1):
         # search 파라미터에 함수 자체를 넘긴다고 보면 됨
-        # 반환 값으로 ((doc_id, score), ...) 튜플 제공
-        hits = search(query.query, top_k)
+        # 검색 함수가 결과와 해당 쿼리의 계측값을 함께 반환한다.
+        result = search(query.query, top_k)
+        hits, timing = result[:2]
+        cost = result[2] if len(result) == 3 else None
         if len(hits) != min(top_k, len(allowed)) or len({doc_id for doc_id, _ in hits}) != len(hits):
             raise ValueError('검색 결과의 공고 수 또는 중복 여부가 올바르지 않습니다')
 
@@ -110,39 +118,48 @@ def collect_results(
         if hits != tuple(sorted(hits, key=lambda hit: (-hit[1], hit[0]))):
             raise ValueError('검색 결과가 점수 내림차순·ID 오름차순이 아닙니다')
 
-        rows = (*rows, *({'query_id': query.query_id, 'doc_id': doc_id, 'rank': rank, 'score': score}
-                        for rank, (doc_id, score) in enumerate(hits, start=1)))
+        candidates = tuple(Hit(doc_id=doc_id, rank=rank, score=score)
+                           for rank, (doc_id, score) in enumerate(hits, start=1))
+        predictions = (*predictions, QueryPrediction(
+            query_id=query.query_id, candidates=candidates, ranked=candidates, timing=timing, cost=cost,
+        ))
         print(f'검색 완료: {index}/{len(inputs.queries)} ({query.query_id})', flush=True)
 
-    return rows
+    return predictions
 
 
 def save_results(
-    args: argparse.Namespace, inputs: Inputs, rows: tuple[dict[str, Any], ...],
-    settings: dict[str, Any], started_at: float, code_files: tuple[Path, ...],
+    args: argparse.Namespace, inputs: Inputs,
+    predictions: tuple[QueryPrediction, ...],
+    settings: dict[str, Any], code_files: tuple[Path, ...],
 ) -> None:
-    """완성된 run과 결과 해시를 포함한 manifest를 배타적으로 저장한다."""
+    """예측 JSONL과 결과 해시를 포함한 manifest를 배타적으로 저장한다."""
+    if not predictions or any(not isinstance(item, QueryPrediction) for item in predictions):
+        raise ValueError('완성된 쿼리별 예측만 저장할 수 있습니다')
     run_path, manifest_path = output_paths(args)
-    data = ''.join(json.dumps(row, ensure_ascii=False, allow_nan=False) + '\n' for row in rows)
+    prediction_data = ''.join(item.model_dump_json() + '\n' for item in predictions)
+    hit_count = sum(len(item.candidates) for item in predictions)
     manifest = {
         'schema_version': 1, 'status': 'completed', 'run_id': args.run_name,
         'corpus_version': args.corpus_version, 'corpus_sha256': inputs.corpus_sha256,
         'query_file': str(args.queries.resolve()), 'query_sha256': inputs.query_sha256,
         'document_count': len(inputs.documents), 'query_count': len(inputs.queries),
-        'result_count': len(rows), 'top_k': args.top_k,
+        'result_count': hit_count, 'top_k': args.top_k,
         'ranking_unit': 'document', 'tie_break': 'doc_id_ascending', 'score_threshold': None,
-        'run_file': f'runs/{args.run_name}.jsonl', 'run_sha256': sha256(data.encode('utf-8')),
+        'prediction_file': f'runs/{run_path.name}',
+        'prediction_sha256': sha256(prediction_data.encode('utf-8')),
+        'prediction_count': len(predictions),
         'created_at': datetime.now(timezone.utc).isoformat(),
-        'elapsed_seconds': round(perf_counter() - started_at, 3),
         'code_sha256': {str(path.relative_to(ROOT)): sha256(path.read_bytes()) for path in code_files},
         **settings,
     }
 
     run_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    # 쿼리별 예측: runs/{run_name}.jsonl (쿼리당 한 줄)
     with run_path.open('x', encoding='utf-8') as file:
-        file.write(data)
-    # manifest가 존재하는 결과만 완성된 산출물로 취급한다.
+        file.write(prediction_data)
+    # 실험 설정·해시: manifests/{run_name}.json. 이 파일이 있어야 완성된 산출물이다.
     with manifest_path.open('x', encoding='utf-8') as file:
         json.dump(manifest, file, ensure_ascii=False, indent=2, allow_nan=False)
         file.write('\n')
