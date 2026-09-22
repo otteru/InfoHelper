@@ -8,8 +8,9 @@ from RAG_evaluation.benchmark.loader import load_negative_query_ids, load_predic
 from RAG_evaluation.benchmark.report import save_report
 
 ROOT = Path(__file__).resolve().parents[1]
+POOL_VERSION = "v2"
 RUNS_DIR = ROOT / 'artifacts' / 'zighang_v1' / 'runs'
-QRELS_PATH = ROOT / 'dataset' / 'labeling' / 'pool_v1' / 'qrels.txt'
+QRELS_PATH = ROOT / 'dataset' / 'labeling' / f'pool_{POOL_VERSION}' / 'qrels.txt'
 QUERIES_PATH = ROOT / 'dataset' / 'queries' / 'eval_queries_80.jsonl'
 REPORTS_DIR = ROOT / 'artifacts' / 'zighang_v1' / 'benchmark_reports'
 

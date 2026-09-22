@@ -83,13 +83,15 @@ def render_markdown(report: BenchmarkReport) -> str:
 
 
 def save_report(report: BenchmarkReport, output_dir: Path) -> Path:
-    """실행별 새 폴더에 전체 JSON과 요약 Markdown을 저장하고 폴더 경로를 반환한다."""
+    """정답 버전 아래 실행별 폴더에 JSON과 Markdown 보고서를 저장한다."""
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', report.run_id):
         raise ValueError('run_id는 영문·숫자·밑줄·하이픈만 사용할 수 있습니다')
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', report.qrels_version):
+        raise ValueError('qrels_version은 영문·숫자·밑줄·하이픈만 사용할 수 있습니다')
     json_content = report.model_dump_json(indent=2) + '\n'
     markdown_content = render_markdown(report)
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    directory = output_dir / f'{report.run_id}_{timestamp}'
+    directory = output_dir / report.qrels_version / f'{report.run_id}_{timestamp}'
     directory.mkdir(parents=True, exist_ok=False)
     (directory / 'result.json').write_text(json_content, encoding='utf-8')
     (directory / 'report.md').write_text(markdown_content, encoding='utf-8')
